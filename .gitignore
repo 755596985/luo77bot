@@ -1,0 +1,8 @@
+vendor/
+temp/
+data/
+logs/
+config/bots.php
+config/bots.local.php
+.DS_Store
+*.log
