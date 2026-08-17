@@ -2,14 +2,11 @@
 
 QQ官方机器人框架 献给api提供用户的一份礼物 官方保证永不收费 持续开源更新
 
-详细部署地址: https://www.18years.ink/
-
 插件生成地址: https://plugin.18years.ink/ (测试阶段 很多BUG未修复)
-插件库: https://plugin.18years.ink/download.php
 
 插件开发: 看不懂文件就把几个示例插件发给唧唧人 让唧唧人写
 
-框架bug及建议 请联系QQ: 2036513862 群聊: 750957985
+框架bug及建议 请联系QQ: 1989324402
 
 因为是免费框架 所有system插件可以保留尽量保留 感谢!
 
