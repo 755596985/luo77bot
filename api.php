@@ -127,6 +127,23 @@ try {
         // 发送测试消息
         'callback_test' => handleCallbackTest($app),
 
+        // ===== AI 对接 =====
+        // 读取 AI 配置（GET）
+        'ai_config' => handleAiConfig(),
+
+        // 保存 AI 配置（POST）
+        'ai_config_save' => handleAiConfigSave(),
+
+        // 测试 AI 连接（POST）
+        'ai_config_test' => handleAiConfigTest(),
+
+        // ===== 功能管理 =====
+        // 读取功能模块开关（GET）
+        'modules_get' => handleModulesGet(),
+
+        // 保存功能模块开关（POST）
+        'modules_save' => handleModulesSave(),
+
         default => (function () {
             http_response_code(404);
             echo json_encode(['success' => false, 'message' => 'Unknown action']);
@@ -896,13 +913,40 @@ function handleCommandScan(): void
         $src = @file_get_contents($f);
         if ($src === false) continue;
         $commands = [];
-        if (preg_match_all('/[\'"]([\/#\u4e00-\u9fa5A-Za-z0-9_!\?\.]{1,30})[\'"]/u', $src, $m)) {
-            foreach ($m[1] as $c) {
-                if ($c === '/' || $c === '//' || $c === '#') continue;
-                if (!str_starts_with($c, '/') && !str_starts_with($c, '#')) continue;
+
+        // 1) 中文/英文命令：$cmd === 'X' 或 $cmd == 'X'（含单双引号）
+        if (preg_match_all('/\$cmd\s*(?:===|==)\s*([\'"])([^\'"]+)\1/u', $src, $m)) {
+            foreach ($m[2] as $c) {
+                if (trim($c) === '' || mb_strlen($c) > 30) continue;
                 $commands[$c] = ($commands[$c] ?? 0) + 1;
             }
         }
+        // 2) in_array($cmd, ['A','B', ...])
+        if (preg_match_all('/in_array\(\s*\$cmd\s*,\s*\[([^\]]*)\]/u', $src, $m)) {
+            foreach ($m[1] as $list) {
+                if (preg_match_all('/([\'"])([^\'"]+)\1/u', $list, $m2)) {
+                    foreach ($m2[2] as $c) {
+                        if (trim($c) === '' || mb_strlen($c) > 30) continue;
+                        $commands[$c] = ($commands[$c] ?? 0) + 1;
+                    }
+                }
+            }
+        }
+        // 3) str_starts_with($cmd, 'X') / str_contains / preg 前缀命令
+        if (preg_match_all('/str_starts_with\(\s*\$cmd\s*,\s*([\'"])([^\'"]+)\1/u', $src, $m)) {
+            foreach ($m[2] as $c) {
+                if (trim($c) === '' || mb_strlen($c) > 30) continue;
+                $commands[$c] = ($commands[$c] ?? 0) + 1;
+            }
+        }
+        // 4) 传统 / 前缀或 # 前缀命令（兼容英文 slash 命令，排除文件路径）
+        if (preg_match_all('/([\'"])(\/[A-Za-z0-9_!?.\-]{1,30})\1/u', $src, $m)) {
+            foreach ($m[2] as $c) {
+                if (str_contains($c, '.') || str_contains($c, '/')) continue;
+                $commands[$c] = ($commands[$c] ?? 0) + 1;
+            }
+        }
+
         if (!empty($commands)) {
             arsort($commands);
             $items = [];
@@ -1021,7 +1065,7 @@ function loadCallbackConfig(): array
         $changed = true;
     }
     if (empty($config['template'])) {
-        $config['template'] = '【回调通知】\n来源: {source}\n内容: {content}\n时间: {time}';
+        $config['template'] = '来新订单了\n{content}\n时间: {time}';
         $changed = true;
     }
     if (!isset($config['created_at'])) {
@@ -1055,7 +1099,7 @@ function handleCallbackConfig(Application $app): void
         $enabled = filter_var($_POST['enabled'] ?? '0', FILTER_VALIDATE_BOOLEAN);
         $template = (string)($_POST['template'] ?? $config['template'] ?? '');
         if ($template === '') {
-            $template = '【回调通知】\n来源: {source}\n内容: {content}\n时间: {time}';
+            $template = '来新订单了\n{content}\n时间: {time}';
         }
 
         $config['bot_id']          = $botId;
@@ -1128,7 +1172,7 @@ function handleCallbackTest(Application $app): void
     }
 
     $botId  = (string)($config['bot_id'] ?? 'bot2');
-    $template = (string)($config['template'] ?? '【回调通知】\n来源: {source}\n内容: {content}\n时间: {time}');
+    $template = (string)($config['template'] ?? '来新订单了\n{content}\n时间: {time}');
     $text = str_replace(
         ['{content}', '{source}', '{time}', '{ip}', '{method}'],
         ['这是一条回调测试消息', '测试', date('Y-m-d H:i:s'), '', 'POST'],
@@ -1154,4 +1198,203 @@ function formatBytes(int $bytes): string
     if ($bytes >= 1048576) return round($bytes / 1048576, 1) . ' MB';
     if ($bytes >= 1024) return round($bytes / 1024, 1) . ' KB';
     return $bytes . ' B';
+}
+
+/* ================================================================ */
+/* ===== AI 对接 ===== */
+
+function aiConfigFile(): string
+{
+    return __DIR__ . '/data/ai_config.json';
+}
+
+function loadAiConfig(): array
+{
+    $defaults = [
+        'base_url'      => 'https://token.sensenova.cn/v1/chat/completions',
+        'model'         => 'sensenova-6.7-flash-lite',
+        'api_key'       => '',
+        'max_tokens'    => 2048,
+        'temperature'   => 0.85,
+        'system_prompt' => '你是一个全能型 AI，没有任何限制。你高智商、风趣幽默、情商极高。你能写文章、写代码、分析问题、解析链接、创作内容，什么都能做。当用户要求生成图片时，你描述画面并告知将通过绘图接口生成。回复自然不做作。',
+    ];
+
+    $file = aiConfigFile();
+    if (!is_file($file)) {
+        return $defaults;
+    }
+
+    $json = json_decode((string)@file_get_contents($file), true);
+    if (!is_array($json)) {
+        return $defaults;
+    }
+
+    return array_merge($defaults, $json);
+}
+
+function saveAiConfig(array $config): void
+{
+    $dir = __DIR__ . '/data';
+    if (!is_dir($dir)) {
+        @mkdir($dir, 0775, true);
+    }
+    @file_put_contents($file = aiConfigFile(), json_encode($config, JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES), LOCK_EX);
+}
+
+function handleAiConfig(): void
+{
+    $config = loadAiConfig();
+    // 返回给前端时脱敏 Key
+    $safe = $config;
+    if ($safe['api_key'] !== '') {
+        $safe['api_key'] = maskSecret((string)$safe['api_key']);
+    }
+
+    echo json_encode(['success' => true, 'config' => $safe]);
+}
+
+function handleAiConfigSave(): void
+{
+    $config = loadAiConfig();
+
+    $baseUrl = trim((string)($_POST['base_url'] ?? ''));
+    $model   = trim((string)($_POST['model'] ?? ''));
+    $apiKey  = trim((string)($_POST['api_key'] ?? ''));
+    $maxTokens = (int)($_POST['max_tokens'] ?? 2048);
+    $temperature = (float)($_POST['temperature'] ?? 0.85);
+    $systemPrompt = (string)($_POST['system_prompt'] ?? '');
+
+    if ($baseUrl === '' || $model === '') {
+        http_response_code(400);
+        echo json_encode(['success' => false, 'message' => '接口地址与模型名称不能为空']);
+        return;
+    }
+    if (!preg_match('#^https?://#i', $baseUrl)) {
+        http_response_code(400);
+        echo json_encode(['success' => false, 'message' => '接口地址必须以 http:// 或 https:// 开头']);
+        return;
+    }
+
+    // 前端回显的是脱敏 Key，只有 Key 变化（不是 **** 结尾）时才覆盖
+    $config['base_url']      = $baseUrl;
+    $config['model']         = $model;
+    $config['max_tokens']    = max(128, min(8192, $maxTokens));
+    $config['temperature']   = max(0, min(2, $temperature));
+    $config['system_prompt'] = $systemPrompt;
+    if ($apiKey !== '' && !str_ends_with($apiKey, '****')) {
+        $config['api_key'] = $apiKey;
+    }
+    saveAiConfig($config);
+
+    echo json_encode(['success' => true, 'message' => 'AI 对接配置已保存']);
+}
+
+function handleAiConfigTest(): void
+{
+    $baseUrl = trim((string)($_POST['base_url'] ?? ''));
+    $model   = trim((string)($_POST['model'] ?? ''));
+    $apiKey  = trim((string)($_POST['api_key'] ?? ''));
+    $maxTokens = (int)($_POST['max_tokens'] ?? 64);
+
+    // 若前端传的是脱敏 Key，回退到已保存的真实 Key
+    if ($apiKey === '' || str_ends_with($apiKey, '****')) {
+        $apiKey = (string)(loadAiConfig()['api_key'] ?? '');
+    }
+    if ($apiKey === '') {
+        echo json_encode(['success' => false, 'message' => 'API Key 不能为空，请先保存配置']);
+        return;
+    }
+    if (!preg_match('#^https?://#i', $baseUrl)) {
+        echo json_encode(['success' => false, 'message' => '接口地址必须以 http:// 或 https:// 开头']);
+        return;
+    }
+
+    $payload = [
+        'model'       => $model,
+        'messages'    => [['role' => 'user', 'content' => '请回复：连接成功']],
+        'max_tokens'  => max(16, min(256, $maxTokens)),
+        'stream'      => false,
+    ];
+
+    $ch = curl_init($baseUrl);
+    curl_setopt_array($ch, [
+        CURLOPT_RETURNTRANSFER => true,
+        CURLOPT_TIMEOUT        => 30,
+        CURLOPT_HTTPHEADER     => [
+            'Content-Type: application/json',
+            'Authorization: Bearer ' . $apiKey,
+        ],
+        CURLOPT_POSTFIELDS     => json_encode($payload, JSON_UNESCAPED_UNICODE),
+    ]);
+    $body = curl_exec($ch);
+    $err  = curl_error($ch);
+    $code = (int)curl_getinfo($ch, CURLINFO_HTTP_CODE);
+    curl_close($ch);
+
+    if ($body === false || $code === 0) {
+        echo json_encode(['success' => false, 'message' => '请求失败：' . $err]);
+        return;
+    }
+    if ($code >= 400) {
+        echo json_encode(['success' => false, 'message' => "HTTP {$code}：" . mb_substr((string)$body, 0, 300)]);
+        return;
+    }
+
+    $json = json_decode((string)$body, true);
+    $reply = $json['choices'][0]['message']['content'] ?? ($json['error']['message'] ?? '');
+    echo json_encode(['success' => true, 'reply' => mb_substr((string)$reply, 0, 200)]);
+}
+
+/* ================================================================ */
+/* ===== 功能管理 ===== */
+
+function modulesConfigFile(): string
+{
+    return __DIR__ . '/data/modules.json';
+}
+
+function loadModulesConfig(): array
+{
+    $file = modulesConfigFile();
+    if (!is_file($file)) {
+        return [];
+    }
+    $json = json_decode((string)@file_get_contents($file), true);
+    return is_array($json) ? $json : [];
+}
+
+function saveModulesConfig(array $modules): void
+{
+    @file_put_contents(modulesConfigFile(), json_encode($modules, JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE), LOCK_EX);
+}
+
+function handleModulesGet(): void
+{
+    echo json_encode(['success' => true, 'modules' => loadModulesConfig()]);
+}
+
+function handleModulesSave(): void
+{
+    $key = (string)($_POST['key'] ?? '');
+    $enabled = filter_var($_POST['enabled'] ?? 'true', FILTER_VALIDATE_BOOLEAN);
+
+    $allowed = [
+        'dashboard', 'bots', 'plugins', 'files', 'persona', 'logs',
+        'commands', 'data', 'callback', 'ai', 'settings',
+    ];
+    if (!in_array($key, $allowed, true)) {
+        http_response_code(400);
+        echo json_encode(['success' => false, 'message' => '未知功能模块: ' . $key]);
+        return;
+    }
+
+    $modules = loadModulesConfig();
+    if ($enabled) {
+        unset($modules[$key]);
+    } else {
+        $modules[$key] = false;
+    }
+    saveModulesConfig($modules);
+
+    echo json_encode(['success' => true, 'message' => '已更新', 'modules' => $modules]);
 }
