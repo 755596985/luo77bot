@@ -13,7 +13,7 @@ if (!$isLoggedIn):
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
-    <title>luo77Bot 管理后台 - 登录</title>
+    <title>鱼鱼吉吉人 管理后台 - 登录</title>
     <style>
         * { margin: 0; padding: 0; box-sizing: border-box; }
         body {
@@ -118,8 +118,8 @@ if (!$isLoggedIn):
     <button class="theme-toggle-login" id="loginThemeBtn" onclick="toggleLoginTheme()">🌙 深色</button>
     <div class="login-container">
         <div class="login-header">
-            <div class="logo">B</div>
-            <h1>luo77Bot 管理后台</h1>
+            <div class="logo">鱼</div>
+            <h1>鱼鱼吉吉人 管理后台</h1>
             <p>请输入管理密码以继续</p>
         </div>
         <div class="form-group">
@@ -128,7 +128,7 @@ if (!$isLoggedIn):
         </div>
         <button class="btn-login" onclick="login()">登 录</button>
         <div class="error-msg" id="errorMsg"></div>
-        <div class="footer-text">luo77Bot &copy; 2025</div>
+        <div class="footer-text">鱼鱼吉吉人 &copy; 2025</div>
     </div>
     <script>
         async function login() {
@@ -172,7 +172,7 @@ endif;
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
-    <title>luo77Bot 管理后台</title>
+    <title>鱼鱼吉吉人 管理后台</title>
     <style>
         * { margin: 0; padding: 0; box-sizing: border-box; }
 
@@ -870,16 +870,120 @@ endif;
         @media (max-width: 420px) {
             .card-grid { grid-template-columns: 1fr; }
         }
+
+        /* ===== 鱼鱼吉吉人 视觉升级 ===== */
+        :root {
+            --grad-brand: linear-gradient(135deg, #6366f1 0%, #8b5cf6 55%, #d946ef 100%);
+            --grad-soft: linear-gradient(135deg, rgba(99,102,241,0.16), rgba(217,70,239,0.10));
+            --glow: 0 10px 40px rgba(99,102,241,0.35);
+        }
+        :root[data-theme="cream"] {
+            --grad-brand: linear-gradient(135deg, #b97f3f 0%, #c9a06a 55%, #d8b57f 100%);
+            --grad-soft: linear-gradient(135deg, rgba(185,127,63,0.14), rgba(201,160,106,0.10));
+            --glow: 0 10px 36px rgba(185,127,63,0.28);
+        }
+        .sidebar-header .logo {
+            background: var(--grad-brand);
+            box-shadow: var(--glow);
+            border-radius: 14px;
+            font-size: 20px;
+            letter-spacing: 0.5px;
+        }
+        .nav-item { position: relative; border-radius: 12px; transition: all 0.22s ease; }
+        .nav-item:hover { transform: translateX(3px); }
+        .nav-item.active {
+            background: var(--grad-brand);
+            color: #fff;
+            box-shadow: 0 6px 18px rgba(99,102,241,0.4);
+            font-weight: 600;
+        }
+        .nav-item.active svg { filter: drop-shadow(0 0 4px rgba(255,255,255,0.5)); }
+        .stat-card { border-radius: 16px; }
+        .stat-card::after {
+            background: radial-gradient(circle, rgba(139,92,246,0.25), transparent 70%);
+        }
+        .stat-card:hover { border-color: var(--accent); transform: translateY(-4px); box-shadow: var(--shadow), var(--glow); }
+        .btn-primary { background: var(--grad-brand); box-shadow: 0 4px 16px rgba(99,102,241,0.35); }
+        .btn-primary:hover { box-shadow: var(--glow); }
+        .table-container, .plugin-card, .modal, .file-tree, .editor-main { border-radius: 16px; }
+        .plugin-card:hover { border-color: var(--accent); box-shadow: var(--shadow), var(--glow); }
+        .plugin-icon { border-radius: 14px; }
+        .tag { background: var(--grad-soft); }
+        .page-title {
+            background: linear-gradient(120deg, var(--text-primary) 20%, var(--accent-2) 80%);
+            -webkit-background-clip: text; -webkit-text-fill-color: transparent;
+            background-clip: text;
+        }
+        .topbar { background: rgba(15,15,26,0.82); }
+        :root[data-theme="cream"] .topbar { background: rgba(250,246,239,0.85); }
+        .toast { border-radius: 14px; }
+        .section.active { animation: fadeUp 0.28s ease; }
+        @keyframes fadeUp { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
+
+        /* ===== 功能管理开关卡片 ===== */
+        .module-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 14px; }
+        .module-card {
+            display: flex; align-items: center; justify-content: space-between; gap: 12px;
+            background: var(--bg-card);
+            border: 1px solid var(--border);
+            border-radius: 14px;
+            padding: 16px 18px;
+            transition: all 0.2s;
+        }
+        .module-card:hover { border-color: var(--accent); transform: translateY(-2px); box-shadow: var(--shadow); }
+        .module-card .m-icon { width: 40px; height: 40px; border-radius: 12px; background: var(--grad-soft); display: flex; align-items: center; justify-content: center; font-size: 18px; flex-shrink: 0; }
+        .module-card .m-info { flex: 1; min-width: 0; }
+        .module-card .m-name { font-size: 14px; font-weight: 600; }
+        .module-card .m-desc { font-size: 12px; color: var(--text-secondary); margin-top: 2px; }
+
+        /* ===== AI 对接配置 ===== */
+        .ai-config-card {
+            background: var(--bg-card);
+            border: 1px solid var(--border);
+            border-radius: 16px;
+            padding: 24px;
+            max-width: 680px;
+            margin-bottom: 18px;
+        }
+        .ai-config-card .hint { font-size: 12px; color: var(--text-secondary); line-height: 1.7; }
+        .provider-select { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 18px; }
+        .provider-chip {
+            padding: 8px 14px;
+            border-radius: 20px;
+            border: 1px solid var(--border);
+            background: var(--bg-secondary);
+            color: var(--text-secondary);
+            font-size: 13px;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+        .provider-chip.active { background: var(--grad-brand); color: #fff; border-color: transparent; box-shadow: 0 4px 14px rgba(99,102,241,0.35); }
+        .form-row { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
+        @media (max-width: 640px) { .form-row { grid-template-columns: 1fr; } }
+        .form-group .input-hint { font-size: 11px; color: var(--text-secondary); margin-top: 6px; }
+        .test-result {
+            display: none;
+            margin-top: 16px;
+            padding: 14px 16px;
+            border-radius: 12px;
+            font-size: 13px;
+            line-height: 1.6;
+            word-break: break-all;
+        }
+        .test-result.ok { display: block; background: rgba(34,197,94,0.12); border: 1px solid rgba(34,197,94,0.35); color: var(--success); }
+        .test-result.fail { display: block; background: rgba(239,68,68,0.12); border: 1px solid rgba(239,68,68,0.35); color: var(--danger); }
+        .danger-zone { border: 1px solid rgba(239,68,68,0.35); }
+        .danger-zone h3 { color: var(--danger); }
     </style>
 </head>
 <body>
     <!-- Sidebar -->
     <nav class="sidebar" id="sidebar">
         <div class="sidebar-header">
-            <div class="logo">B</div>
+            <div class="logo">鱼</div>
             <div>
-                <h1>luo77Bot</h1>
-                <p>机器人管理后台</p>
+                <h1>鱼鱼吉吉人</h1>
+                <p>全能机器人管理后台</p>
             </div>
         </div>
         <div class="nav">
@@ -924,7 +1028,15 @@ endif;
                 <svg fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z"/></svg>
                 <span>回调推送</span>
             </div>
+            <div class="nav-item" data-page="ai" onclick="showPage('ai', this)">
+                <svg fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 18h.01M8 21h8a2 2 0 002-2V5a2 2 0 00-2-2H8a2 2 0 00-2 2v14a2 2 0 002 2z"/></svg>
+                <span>AI 对接</span>
+            </div>
             <div class="nav-group">系统</div>
+            <div class="nav-item" data-page="modules" onclick="showPage('modules', this)">
+                <svg fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 12h16M4 18h16"/></svg>
+                <span>功能管理</span>
+            </div>
             <div class="nav-item" data-page="settings" onclick="showPage('settings', this)">
                 <svg fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z"/><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"/></svg>
                 <span>系统设置</span>
@@ -1176,6 +1288,78 @@ endif;
             </div>
         </div>
 
+        <!-- AI 对接 -->
+        <div id="page-ai" class="section">
+            <div class="section-header">
+                <h1 class="page-title">AI 对接<span class="sub">配置机器人使用的 AI 大模型接口</span></h1>
+                <button class="btn btn-secondary" onclick="loadAiConfig()">刷新</button>
+            </div>
+
+            <div class="ai-config-card">
+                <div class="provider-select" id="providerSelect">
+                    <div class="provider-chip active" data-provider="custom" onclick="selectProvider('custom')">自定义</div>
+                    <div class="provider-chip" data-provider="sensenova" onclick="selectProvider('sensenova')">商汤 SenseNova</div>
+                    <div class="provider-chip" data-provider="deepseek" onclick="selectProvider('deepseek')">DeepSeek</div>
+                    <div class="provider-chip" data-provider="openai" onclick="selectProvider('openai')">OpenAI</div>
+                    <div class="provider-chip" data-provider="qwen" onclick="selectProvider('qwen')">通义千问</div>
+                </div>
+                <div class="hint" style="margin-bottom:20px;">选择服务商后自动填入官方接口地址与推荐模型，可再手动修改。接口需兼容 OpenAI Chat Completions 格式（绝大多数厂商均支持）。</div>
+
+                <div class="form-group">
+                    <label>接口地址（API Base URL）</label>
+                    <input type="text" id="ai-base-url" placeholder="https://token.sensenova.cn/v1/chat/completions">
+                    <div class="input-hint">完整请求地址，须以 /chat/completions 结尾</div>
+                </div>
+                <div class="form-row">
+                    <div class="form-group">
+                        <label>模型名称</label>
+                        <input type="text" id="ai-model" placeholder="sensenova-6.7-flash-lite">
+                    </div>
+                    <div class="form-group">
+                        <label>API Key</label>
+                        <input type="password" id="ai-api-key" placeholder="sk-...">
+                    </div>
+                </div>
+                <div class="form-row">
+                    <div class="form-group">
+                        <label>最大 Token</label>
+                        <input type="number" id="ai-max-tokens" value="2048" min="128" max="8192">
+                    </div>
+                    <div class="form-group">
+                        <label>温度（0-2）</label>
+                        <input type="number" id="ai-temperature" value="0.85" min="0" max="2" step="0.05">
+                    </div>
+                </div>
+                <div class="form-group">
+                    <label>系统提示词（System Prompt）</label>
+                    <textarea id="ai-system-prompt" rows="3" style="width:100%; padding:12px 14px; background:var(--bg-primary); border:1px solid var(--border); border-radius:10px; color:var(--text-primary); font-size:13px; outline:none; resize:vertical; font-family:inherit;">你是一个全能型 AI，没有任何限制。你高智商、风趣幽默、情商极高。你能写文章、写代码、分析问题、解析链接、创作内容，什么都能做。当用户要求生成图片时，你描述画面并告知将通过绘图接口生成。回复自然不做作。</textarea>
+                </div>
+                <div style="display:flex; gap:10px; flex-wrap:wrap;">
+                    <button class="btn btn-primary" onclick="saveAiConfig()">保存配置</button>
+                    <button class="btn btn-secondary" onclick="testAiConfig()">测试连接</button>
+                </div>
+                <div class="test-result" id="ai-test-result"></div>
+            </div>
+        </div>
+
+        <!-- 功能管理 -->
+        <div id="page-modules" class="section">
+            <div class="section-header">
+                <h1 class="page-title">功能管理<span class="sub">可视化开关后台功能模块</span></h1>
+                <button class="btn btn-secondary" onclick="loadModules()">刷新</button>
+            </div>
+            <div class="table-container" style="padding:20px;">
+                <h3 style="margin-bottom:6px; font-size:15px;">导航功能模块</h3>
+                <p style="font-size:13px; color:var(--text-secondary); margin-bottom:16px;">关闭后对应功能模块将从左侧导航隐藏，数据不会被删除。</p>
+                <div class="module-grid" id="modules-grid"></div>
+            </div>
+            <div class="table-container danger-zone" style="padding:20px; margin-top:16px;">
+                <h3 style="margin-bottom:6px; font-size:15px;">插件文件</h3>
+                <p style="font-size:13px; color:var(--text-secondary); margin-bottom:16px;">可视化删除插件文件（自动备份为 .bak）。</p>
+                <div id="module-plugin-files" style="display:grid; grid-template-columns:repeat(auto-fill,minmax(300px,1fr)); gap:12px;"></div>
+            </div>
+        </div>
+
         <!-- Log Center -->
         <div id="page-logs" class="section">
             <div class="section-header">
@@ -1366,7 +1550,7 @@ endif;
         async function apiGetQuery(action, params) { return apiWithAuth(action, 'GET', null, params); }
 
         // ===== 页面导航 =====
-        const pageTitles = { dashboard: '仪表盘', bots: '机器人管理', plugins: '插件管理', files: '插件文件', persona: '人设管理', settings: '系统设置', logs: '日志中心', commands: '命令中心', data: '数据管理', callback: '回调推送' };
+        const pageTitles = { dashboard: '仪表盘', bots: '机器人管理', plugins: '插件管理', files: '插件文件', persona: '人设管理', settings: '系统设置', logs: '日志中心', commands: '命令中心', data: '数据管理', callback: '回调推送', ai: 'AI 对接', modules: '功能管理' };
         function showPage(page, el) {
             document.querySelectorAll('.section').forEach(s => s.classList.remove('active'));
             document.querySelectorAll('.nav-item').forEach(n => n.classList.remove('active'));
@@ -1386,6 +1570,8 @@ endif;
             if (page === 'commands') loadCommands();
             if (page === 'data') loadDataFiles();
             if (page === 'callback') loadCallback();
+            if (page === 'ai') loadAiConfig();
+            if (page === 'modules') loadModules();
             window.scrollTo(0, 0);
         }
 
@@ -1583,6 +1769,7 @@ endif;
                     </div>
                     ${p.file ? `<div class="plugin-actions">
                         <button class="btn btn-sm btn-secondary" onclick="openFileFromPlugin('${esc(p.file)}')">编辑代码</button>
+                        <button class="btn btn-sm btn-danger" onclick="deletePluginFile('${esc(p.file)}')">删除</button>
                     </div>` : ''}
                 </div>
             `).join('');
@@ -1854,7 +2041,7 @@ endif;
             const box = document.getElementById('persona-active-badge');
             if (!p) return;
             const isCustom = p.mode === 'custom';
-            const label = isCustom ? '自定义人设 · ' + (p.custom && p.custom.name || p.name || '未命名') : '预设人设 · ' + (p.preset_key || '');
+            const label = isCustom ? '自定义人设 · ' + (p.custom && p.custom.name || p.name || '未命名') : '预设人设 · ' + (p.preset_key || '') + (p.name ? '（' + p.name + '）' : '');
             box.innerHTML = '<span class="badge badge-success" style="font-size:13px; padding:6px 12px;">当前：' + label + '</span>' +
                 (p.memory_enabled ? '<span class="badge" style="font-size:13px; padding:6px 12px;">🧠 记忆已开</span>' : '') +
                 (p.emotion_enabled ? '<span class="badge" style="font-size:13px; padding:6px 12px;">💬 情感识别已开</span>' : '');
@@ -1869,7 +2056,10 @@ endif;
                 return '<div class="table-container" style="padding:16px; margin:0; border:1px solid ' + (active ? 'var(--accent,#4f8cff)' : 'var(--border,#e5e7eb)') + ';' + (active ? 'box-shadow:0 0 0 1px var(--accent,#4f8cff);' : '') + '">' +
                     '<div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:10px;">' +
                     '<strong style="font-size:15px;">' + key + (active ? ' <span class="badge badge-success">使用中</span>' : '') + '</strong>' +
+                    '<div>' +
+                    (active ? '<button class="btn btn-secondary" style="padding:4px 12px; font-size:12px; margin-right:6px;" onclick="renamePresetName(\'' + key + '\')">改名</button>' : '') +
                     '<button class="btn ' + (active ? 'btn-secondary' : 'btn-primary') + '" style="padding:4px 12px; font-size:12px;" onclick="applyPreset(\'' + key + '\')">一键套用</button>' +
+                    '</div>' +
                     '</div>' +
                     '<p style="font-size:13px; color:var(--text-secondary); margin-bottom:8px;">' + (v.voice || '') + '</p>' +
                     '<p style="font-size:13px; margin-bottom:8px;">' + (v.core || []).slice(0, 1).join('') + '</p>' +
@@ -1884,6 +2074,19 @@ endif;
                 toast('已套用人设：' + key);
                 loadPersona();
             } else { toast(r.message || '套用失败', 'error'); }
+        }
+
+        async function renamePresetName(key) {
+            const cur = (personaState && personaState.persona && personaState.persona.mode === 'preset' && personaState.persona.preset_key === key && personaState.persona.name) ? personaState.persona.name : '';
+            const name = prompt('请输入人设名字：', cur);
+            if (name === null) return;
+            const trimmed = name.trim();
+            if (!trimmed) { toast('名字不能为空', 'warning'); return; }
+            const r = await api('persona_save', { mode: 'preset', preset_key: key, name: trimmed });
+            if (r.success) {
+                toast('人设名字已更新：' + trimmed);
+                loadPersona();
+            } else { toast(r.message || '保存失败', 'error'); }
         }
 
         function renderCustomForm(p) {
@@ -2153,6 +2356,185 @@ endif;
                 <td data-label="内容" style="max-width:320px; word-break:break-all;">${esc(l.content || l.error || '-')}</td>
             </tr>`).join('');
         }
+
+        // ===== AI 对接 =====
+        const AI_PROVIDERS = {
+            sensenova: { url: 'https://token.sensenova.cn/v1/chat/completions', model: 'sensenova-6.7-flash-lite' },
+            deepseek:  { url: 'https://api.deepseek.com/v1/chat/completions', model: 'deepseek-chat' },
+            openai:    { url: 'https://api.openai.com/v1/chat/completions', model: 'gpt-4o-mini' },
+            qwen:      { url: 'https://dashscope.aliyuncs.com/compatible-mode/v1/chat/completions', model: 'qwen-plus' },
+            custom:    { url: '', model: '' },
+        };
+
+        async function loadAiConfig() {
+            const data = await apiGet('ai_config');
+            if (!data.success) {
+                toast(data.message || 'AI 配置加载失败', 'error');
+                return;
+            }
+            const cfg = data.config || {};
+            document.getElementById('ai-base-url').value = cfg.base_url || '';
+            document.getElementById('ai-model').value = cfg.model || '';
+            document.getElementById('ai-api-key').value = cfg.api_key || '';
+            document.getElementById('ai-max-tokens').value = cfg.max_tokens || 2048;
+            document.getElementById('ai-temperature').value = cfg.temperature != null ? cfg.temperature : 0.85;
+            document.getElementById('ai-system-prompt').value = cfg.system_prompt || '';
+            document.getElementById('ai-test-result').className = 'test-result';
+            document.getElementById('ai-test-result').textContent = '';
+        }
+
+        function selectProvider(key) {
+            document.querySelectorAll('.provider-chip').forEach(c => c.classList.toggle('active', c.dataset.provider === key));
+            const p = AI_PROVIDERS[key];
+            if (p && key !== 'custom') {
+                document.getElementById('ai-base-url').value = p.url;
+                document.getElementById('ai-model').value = p.model;
+            }
+        }
+
+        async function saveAiConfig() {
+            const params = {
+                base_url: document.getElementById('ai-base-url').value.trim(),
+                model: document.getElementById('ai-model').value.trim(),
+                api_key: document.getElementById('ai-api-key').value.trim(),
+                max_tokens: parseInt(document.getElementById('ai-max-tokens').value) || 2048,
+                temperature: parseFloat(document.getElementById('ai-temperature').value) || 0.85,
+                system_prompt: document.getElementById('ai-system-prompt').value,
+            };
+            if (!params.base_url) { toast('请填写接口地址', 'warning'); return; }
+            if (!params.model) { toast('请填写模型名称', 'warning'); return; }
+            if (!params.api_key) { toast('请填写 API Key', 'warning'); return; }
+            const result = await api('ai_config_save', params);
+            if (result.success) {
+                toast('AI 对接配置已保存');
+                loadAiConfig();
+            } else {
+                toast(result.message || '保存失败', 'error');
+            }
+        }
+
+        async function testAiConfig() {
+            const box = document.getElementById('ai-test-result');
+            box.className = 'test-result';
+            box.textContent = '正在测试连接，请稍候…';
+            box.style.display = 'block';
+            const result = await api('ai_config_test', {
+                base_url: document.getElementById('ai-base-url').value.trim(),
+                model: document.getElementById('ai-model').value.trim(),
+                api_key: document.getElementById('ai-api-key').value.trim(),
+                max_tokens: 64,
+            });
+            if (result.success) {
+                box.className = 'test-result ok';
+                box.textContent = '连接成功：' + (result.reply || '');
+            } else {
+                box.className = 'test-result fail';
+                box.textContent = '连接失败：' + (result.message || '未知错误');
+            }
+        }
+
+        // ===== 功能管理 =====
+        const MODULES_META = [
+            { key: 'dashboard', name: '仪表盘', icon: '📊', desc: '机器人运行概览' },
+            { key: 'bots', name: '机器人管理', icon: '🤖', desc: '配置与管理 QQ 机器人' },
+            { key: 'plugins', name: '插件管理', icon: '🧩', desc: '插件启用/禁用' },
+            { key: 'files', name: '插件文件', icon: '📁', desc: '在线编辑插件代码' },
+            { key: 'persona', name: '人设管理', icon: '🎭', desc: '预设人设与记忆系统' },
+            { key: 'logs', name: '日志中心', icon: '📜', desc: '查看运行日志' },
+            { key: 'commands', name: '命令中心', icon: '⌨️', desc: '扫描插件命令关键词' },
+            { key: 'data', name: '数据管理', icon: '🗃️', desc: '查看记忆与业务数据' },
+            { key: 'callback', name: '回调推送', icon: '⚡', desc: '第三方推送 → 私聊通知' },
+            { key: 'ai', name: 'AI 对接', icon: '🤖', desc: 'AI 大模型接口配置' },
+            { key: 'settings', name: '系统设置', icon: '⚙️', desc: 'Webhook 与 API 配置' },
+        ];
+
+        async function loadModules() {
+            const [modData, fileData] = await Promise.all([apiGet('modules_get'), apiGet('plugin_files')]);
+            const grid = document.getElementById('modules-grid');
+            const states = (modData.success && modData.modules) ? modData.modules : {};
+
+            grid.innerHTML = MODULES_META.map(m => `
+                <div class="module-card">
+                    <div class="m-icon">${m.icon}</div>
+                    <div class="m-info">
+                        <div class="m-name">${esc(m.name)}</div>
+                        <div class="m-desc">${esc(m.desc)}</div>
+                    </div>
+                    <label class="toggle">
+                        <input type="checkbox" ${states[m.key] === false ? '' : 'checked'} onchange="toggleModule('${m.key}', this.checked)">
+                        <span class="toggle-slider"></span>
+                    </label>
+                </div>
+            `).join('');
+
+            const pf = document.getElementById('module-plugin-files');
+            if (!fileData.success || !fileData.files.length) {
+                pf.innerHTML = '<div style="font-size:13px; color:var(--text-secondary);">plugins/ 目录下暂无文件</div>';
+                return;
+            }
+            pf.innerHTML = fileData.files.map(f => `
+                <div class="module-card">
+                    <div class="m-icon">🐘</div>
+                    <div class="m-info">
+                        <div class="m-name">${esc(f.path)}</div>
+                        <div class="m-desc">${formatSize(f.size)}</div>
+                    </div>
+                    <button class="btn btn-sm btn-danger" onclick="deleteModulePlugin('${esc(f.path)}')">删除</button>
+                </div>
+            `).join('');
+        }
+
+        async function toggleModule(key, enabled) {
+            const result = await api('modules_save', { key, enabled: String(enabled) });
+            if (result.success) {
+                toast(enabled ? `功能「${key}」已开启` : `功能「${key}」已关闭，导航将隐藏`);
+                applyModuleVisibility(result.modules || {});
+            } else {
+                toast(result.message || '操作失败', 'error');
+            }
+        }
+
+        function applyModuleVisibility(states) {
+            document.querySelectorAll('.nav-item[data-page]').forEach(item => {
+                const page = item.dataset.page;
+                if (page === 'modules') return; // 功能管理入口始终保留
+                if (page === 'ai' || page === 'callback') {
+                    item.style.display = (states[page] === false) ? 'none' : '';
+                    return;
+                }
+                item.style.display = (states[page] === false) ? 'none' : '';
+            });
+        }
+
+        async function deleteModulePlugin(file) {
+            if (!confirm(`确定要删除插件文件 ${file} 吗？\n删除前会自动备份为 .bak 文件。`)) return;
+            const result = await api('plugin_delete', { file });
+            if (result.success) {
+                toast('插件文件已删除（已备份 .bak）');
+                loadModules();
+            } else {
+                toast(result.message || '删除失败', 'error');
+            }
+        }
+
+        async function deletePluginFile(file) {
+            if (!confirm(`确定要删除插件文件 ${file} 吗？\n删除前会自动备份为 .bak 文件。`)) return;
+            const result = await api('plugin_delete', { file });
+            if (result.success) {
+                toast('插件已删除（已备份 .bak）');
+                loadPlugins();
+            } else {
+                toast(result.message || '删除失败', 'error');
+            }
+        }
+
+        // 页面加载时应用模块显隐
+        (async function initModuleVisibility() {
+            try {
+                const data = await apiGet('modules_get');
+                if (data.success) applyModuleVisibility(data.modules || {});
+            } catch (e) { /* 忽略 */ }
+        })();
     </script>
 </body>
 </html>
