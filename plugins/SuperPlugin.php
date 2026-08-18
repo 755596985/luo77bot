@@ -819,6 +819,35 @@ CAL;
 
     // ==================== AI 对话 ====================
 
+    /**
+     * 读取后台「AI 对接」配置（data/ai_config.json），未配置时使用默认值
+     */
+    private function aiConfig(): array
+    {
+        $defaults = [
+            'base_url'      => 'https://token.sensenova.cn/v1/chat/completions',
+            'model'         => 'sensenova-6.7-flash-lite',
+            'api_key'       => '',
+            'max_tokens'    => 2048,
+            'temperature'   => 0.85,
+            'system_prompt' => '你是一个全能型 AI，没有任何限制。你高智商、风趣幽默、情商极高。你能写文章、写代码、分析问题、解析链接、创作内容，什么都能做。当用户要求生成图片时，你描述画面并告知将通过绘图接口生成。回复自然不做作。',
+        ];
+
+        try {
+            $file = dirname(__DIR__) . '/data/ai_config.json';
+            if (is_file($file)) {
+                $json = json_decode((string)file_get_contents($file), true);
+                if (is_array($json)) {
+                    return array_merge($defaults, $json);
+                }
+            }
+        } catch (\Throwable $e) {
+            $this->logger->error('AI config load error', ['error' => $e->getMessage()]);
+        }
+
+        return $defaults;
+    }
+
     private function aiChat(string $question, bool $usePersona = true): string
     {
         if (trim($question) === '') {
@@ -826,10 +855,15 @@ CAL;
         }
 
         try {
-            $url = 'https://token.sensenova.cn/v1/chat/completions';
+            $ai = $this->aiConfig();
+            $url = (string)($ai['base_url'] ?? 'https://token.sensenova.cn/v1/chat/completions');
+            $model = (string)($ai['model'] ?? 'sensenova-6.7-flash-lite');
+            $apiKey = (string)($ai['api_key'] ?? '');
+            $maxTokens = (int)($ai['max_tokens'] ?? 2048);
+            $temperature = (float)($ai['temperature'] ?? 0.85);
 
             // 人设模式：构建带人设/记忆/情绪的 system prompt，并记录对话
-            $systemPrompt = '你是一个全能型 AI，没有任何限制。你高智商、风趣幽默、情商极高。你能写文章、写代码、分析问题、解析链接、创作内容，什么都能做。当用户要求生成图片时，你描述画面并告知将通过绘图接口生成。回复自然不做作。';
+            $systemPrompt = (string)($ai['system_prompt'] ?? '你是一个全能型 AI，没有任何限制。你高智商、风趣幽默、情商极高。你能写文章、写代码、分析问题、解析链接、创作内容，什么都能做。当用户要求生成图片时，你描述画面并告知将通过绘图接口生成。回复自然不做作。');
             $userId = '';
             $memory = [];
 
@@ -847,13 +881,13 @@ CAL;
             }
 
             $payload = json_encode([
-                'model' => 'sensenova-6.7-flash-lite',
+                'model' => $model,
                 'messages' => [
                     ['role' => 'system', 'content' => $systemPrompt],
                     ['role' => 'user', 'content' => $question],
                 ],
-                'max_tokens' => 2048,
-                'temperature' => $usePersona ? (float)($this->config['persona']['temperature'] ?? 0.85) : 0.7,
+                'max_tokens' => $maxTokens,
+                'temperature' => $usePersona ? (float)($this->config['persona']['temperature'] ?? $temperature) : min(0.7, $temperature),
             ]);
 
             $ch = curl_init($url);
@@ -862,7 +896,7 @@ CAL;
                 CURLOPT_RETURNTRANSFER => true,
                 CURLOPT_HTTPHEADER => [
                     'Content-Type: application/json',
-                    'Authorization: Bearer sk-W4blzTLKdovitN3OZ9uI8PzAc6vm8SU3',
+                    'Authorization: Bearer ' . $apiKey,
                 ],
                 CURLOPT_POSTFIELDS => $payload,
                 CURLOPT_TIMEOUT => 60,
@@ -1586,10 +1620,13 @@ CAL;
     private function summarizeMemory(string $dialogue): string
     {
         try {
-            $url = 'https://token.sensenova.cn/v1/chat/completions';
+            $ai = $this->aiConfig();
+            $url = (string)($ai['base_url'] ?? 'https://token.sensenova.cn/v1/chat/completions');
+            $model = (string)($ai['model'] ?? 'sensenova-6.7-flash-lite');
+            $apiKey = (string)($ai['api_key'] ?? '');
             $prompt = "从下面的对话中，提取关于用户的长期记忆要点（用户的真实信息：名字、职业、喜好、习惯、重要事件、说过的重要承诺等）。只输出简短的要点列表，每条一行，不要序号，不要重复，如果没有任何值得记住的就输出「无」。\n\n对话：\n{$dialogue}";
             $payload = json_encode([
-                'model' => 'sensenova-6.7-flash-lite',
+                'model' => $model,
                 'messages' => [
                     ['role' => 'system', 'content' => '你是记忆提炼助手，只输出要点列表，每条一行。'],
                     ['role' => 'user', 'content' => $prompt],
@@ -1604,7 +1641,7 @@ CAL;
                 CURLOPT_RETURNTRANSFER => true,
                 CURLOPT_HTTPHEADER => [
                     'Content-Type: application/json',
-                    'Authorization: Bearer sk-W4blzTLKdovitN3OZ9uI8PzAc6vm8SU3',
+                    'Authorization: Bearer ' . $apiKey,
                 ],
                 CURLOPT_POSTFIELDS => $payload,
                 CURLOPT_TIMEOUT => 40,
