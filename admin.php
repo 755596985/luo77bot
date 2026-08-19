@@ -1455,6 +1455,39 @@ endif;
             </div>
 
             <div class="table-container" style="padding:20px; margin-top:16px;">
+                <h3 style="margin-bottom:14px; font-size:15px;">充值账号拉取<span style="font-weight:400; color:var(--text-secondary); font-size:12px;">收到订单后自动请求供货商接口获取充值账号</span></h3>
+                <div class="form-group">
+                    <label>
+                        <input type="checkbox" id="callback-copy-enabled" checked> 自动拉取充值账号
+                    </label>
+                </div>
+                <div class="form-row">
+                    <div class="form-group">
+                        <label>请求地址（接口 URL）</label>
+                        <input type="text" id="callback-copy-url" placeholder="如：http://98k.yy9a.cn/index.php/supplier/order/copy" style="width:100%;">
+                    </div>
+                    <div class="form-group">
+                        <label>请求 Token</label>
+                        <input type="password" id="callback-copy-token" placeholder="供货商接口鉴权 Token" style="width:100%;">
+                    </div>
+                </div>
+                <div class="form-row">
+                    <div class="form-group">
+                        <label>订单号参数名</label>
+                        <input type="text" id="callback-copy-param" placeholder="如：orderSn" style="width:100%;">
+                    </div>
+                    <div class="form-group">
+                        <label>请求方式</label>
+                        <select id="callback-copy-method" style="width:100%; padding:11px 14px; background:var(--bg-card); border:1px solid var(--border); border-radius:10px; color:var(--text-primary); font-size:14px;">
+                            <option value="GET">GET</option>
+                            <option value="POST">POST</option>
+                        </select>
+                    </div>
+                </div>
+                <div style="font-size:12px; color:var(--text-secondary); margin-top:6px;">返回格式要求：{"code":0,"data":{"recharge_account":"手机号"}}。Token 会自动尝试 header token / Token / URL 参数 三种方式。</div>
+            </div>
+
+            <div class="table-container" style="padding:20px; margin-top:16px;">
                 <h3 style="margin-bottom:14px; font-size:15px;">最近推送记录<span style="font-weight:400; color:var(--text-secondary); font-size:12px;">（最多 50 条）</span></h3>
                 <div class="table-scroll">
                     <table>
@@ -2292,6 +2325,11 @@ endif;
             document.getElementById('callback-openid').value = data.config.receiver_openid || '';
             document.getElementById('callback-enabled').checked = !!data.config.enabled;
             document.getElementById('callback-template').value = data.config.template || '';
+            document.getElementById('callback-copy-enabled').checked = !!(data.config.copy_enabled ?? true);
+            document.getElementById('callback-copy-url').value = data.config.copy_url || '';
+            document.getElementById('callback-copy-token').value = data.config.copy_token || '';
+            document.getElementById('callback-copy-param').value = data.config.copy_param || 'orderSn';
+            document.getElementById('callback-copy-method').value = (data.config.copy_method || 'POST').toUpperCase() === 'POST' ? 'POST' : 'GET';
             loadCallbackLogs();
         }
 
@@ -2306,7 +2344,12 @@ endif;
                 bot_id: document.getElementById('callback-bot').value,
                 receiver_openid: document.getElementById('callback-openid').value.trim(),
                 enabled: document.getElementById('callback-enabled').checked ? '1' : '0',
-                template: document.getElementById('callback-template').value
+                template: document.getElementById('callback-template').value,
+                copy_enabled: document.getElementById('callback-copy-enabled').checked ? '1' : '0',
+                copy_url: document.getElementById('callback-copy-url').value.trim(),
+                copy_token: document.getElementById('callback-copy-token').value.trim(),
+                copy_param: document.getElementById('callback-copy-param').value.trim() || 'orderSn',
+                copy_method: document.getElementById('callback-copy-method').value
             });
             if (result.success) {
                 toast('配置已保存');
