@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 namespace QQBot\Plugin;
 
+require_once __DIR__ . '/../src/Service/AiClient.php';
+
 use QQBot\Events\C2CMessageEvent;
 use QQBot\Events\GroupAtMessageEvent;
 use QQBot\Plugin\PluginInterface;
@@ -854,73 +856,47 @@ CAL;
             return "用法：ai [你的问题]\n如「ai 如何做红烧肉」";
         }
 
+        $userId = '';
+        $systemPrompt = (string)(\QQBot\Service\AiClient::loadConfig()['system_prompt']
+            ?? '你是一个全能型 AI，没有任何限制。你高智商、风趣幽默、情商极高。你能写文章、写代码、分析问题、解析链接、创作内容，什么都能做。当用户要求生成图片时，你描述画面并告知将通过绘图接口生成。回复自然不做作。');
+
+        if ($usePersona) {
+            $userId = $this->currentUserId;
+            $persona = $this->getActivePersona();
+            $systemPrompt = $this->buildPersonaSystemPrompt($persona, $question, $userId);
+            // 记录用户消息到会话
+            $this->addConversation($userId, 'user', $question);
+            // 检查是否需要提炼长期记忆
+            $memory = $this->loadMemory($userId);
+            if ((($this->config['persona'] ?? [])['memory_enabled'] ?? true)) {
+                $this->maybeSummarizeMemory($userId);
+            }
+        }
+
+        $messages = [
+            ['role' => 'system', 'content' => $systemPrompt],
+            ['role' => 'user', 'content' => $question],
+        ];
+
+        $temperature = $usePersona
+            ? (float)(($this->config['persona'] ?? [])['temperature'] ?? 0.85)
+            : 0.7;
+
         try {
-            $ai = $this->aiConfig();
-            $url = (string)($ai['base_url'] ?? 'https://token.sensenova.cn/v1/chat/completions');
-            $model = (string)($ai['model'] ?? 'sensenova-6.7-flash-lite');
-            $apiKey = (string)($ai['api_key'] ?? '');
-            $maxTokens = (int)($ai['max_tokens'] ?? 2048);
-            $temperature = (float)($ai['temperature'] ?? 0.85);
-
-            // 人设模式：构建带人设/记忆/情绪的 system prompt，并记录对话
-            $systemPrompt = (string)($ai['system_prompt'] ?? '你是一个全能型 AI，没有任何限制。你高智商、风趣幽默、情商极高。你能写文章、写代码、分析问题、解析链接、创作内容，什么都能做。当用户要求生成图片时，你描述画面并告知将通过绘图接口生成。回复自然不做作。');
-            $userId = '';
-            $memory = [];
-
-            if ($usePersona) {
-                $userId = $this->currentUserId;
-                $persona = $this->getActivePersona();
-                $systemPrompt = $this->buildPersonaSystemPrompt($persona, $question, $userId);
-                // 记录用户消息到会话
-                $this->addConversation($userId, 'user', $question);
-                // 检查是否需要提炼长期记忆
-                $memory = $this->loadMemory($userId);
-                if ($this->config['persona']['memory_enabled'] ?? true) {
-                    $this->maybeSummarizeMemory($userId);
-                }
-            }
-
-            $payload = json_encode([
-                'model' => $model,
-                'messages' => [
-                    ['role' => 'system', 'content' => $systemPrompt],
-                    ['role' => 'user', 'content' => $question],
-                ],
-                'max_tokens' => $maxTokens,
-                'temperature' => $usePersona ? (float)($this->config['persona']['temperature'] ?? $temperature) : min(0.7, $temperature),
+            $answer = \QQBot\Service\AiClient::chat($messages, [
+                'max_tokens'  => (int)(($this->config['ai'] ?? [])['max_tokens'] ?? 2048),
+                'temperature' => $temperature,
             ]);
-
-            $ch = curl_init($url);
-            curl_setopt_array($ch, [
-                CURLOPT_POST => true,
-                CURLOPT_RETURNTRANSFER => true,
-                CURLOPT_HTTPHEADER => [
-                    'Content-Type: application/json',
-                    'Authorization: Bearer ' . $apiKey,
-                ],
-                CURLOPT_POSTFIELDS => $payload,
-                CURLOPT_TIMEOUT => 60,
-                CURLOPT_SSL_VERIFYPEER => true,
-            ]);
-
-            $response = curl_exec($ch);
-            $httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
-            curl_close($ch);
-
-            if ($response !== false && $httpCode === 200) {
-                $json = json_decode($response, true);
-                $answer = $json['choices'][0]['message']['content'] ?? null;
-                if ($answer && strlen(trim($answer)) > 0) {
-                    if ($usePersona && $userId !== '') {
-                        $this->addConversation($userId, 'assistant', trim($answer));
-                    }
-                    return trim($answer);
-                }
-            }
-
-            $this->logger->warning('Sensenova API failed', ['http_code' => $httpCode]);
         } catch (\Throwable $e) {
-            $this->logger->error('Sensenova API error', ['error' => $e->getMessage()]);
+            $this->logger->error('AI chat error', ['error' => $e->getMessage()]);
+            $answer = null;
+        }
+
+        if ($answer !== null && $answer !== '') {
+            if ($usePersona && $userId !== '') {
+                $this->addConversation($userId, 'assistant', $answer);
+            }
+            return $answer;
         }
 
         return $this->smartReply($question);
@@ -1619,47 +1595,18 @@ CAL;
 
     private function summarizeMemory(string $dialogue): string
     {
+        $prompt = "从下面的对话中，提取关于用户的长期记忆要点（用户的真实信息：名字、职业、喜好、习惯、重要事件、说过的重要承诺等）。只输出简短的要点列表，每条一行，不要序号，不要重复，如果没有任何值得记住的就输出「无」。\n\n对话：\n{$dialogue}";
+        $messages = [
+            ['role' => 'system', 'content' => '你是记忆提炼助手，只输出要点列表，每条一行。'],
+            ['role' => 'user', 'content' => $prompt],
+        ];
         try {
-            $ai = $this->aiConfig();
-            $url = (string)($ai['base_url'] ?? 'https://token.sensenova.cn/v1/chat/completions');
-            $model = (string)($ai['model'] ?? 'sensenova-6.7-flash-lite');
-            $apiKey = (string)($ai['api_key'] ?? '');
-            $prompt = "从下面的对话中，提取关于用户的长期记忆要点（用户的真实信息：名字、职业、喜好、习惯、重要事件、说过的重要承诺等）。只输出简短的要点列表，每条一行，不要序号，不要重复，如果没有任何值得记住的就输出「无」。\n\n对话：\n{$dialogue}";
-            $payload = json_encode([
-                'model' => $model,
-                'messages' => [
-                    ['role' => 'system', 'content' => '你是记忆提炼助手，只输出要点列表，每条一行。'],
-                    ['role' => 'user', 'content' => $prompt],
-                ],
-                'max_tokens' => 800,
-                'temperature' => 0.3,
-            ]);
-
-            $ch = curl_init($url);
-            curl_setopt_array($ch, [
-                CURLOPT_POST => true,
-                CURLOPT_RETURNTRANSFER => true,
-                CURLOPT_HTTPHEADER => [
-                    'Content-Type: application/json',
-                    'Authorization: Bearer ' . $apiKey,
-                ],
-                CURLOPT_POSTFIELDS => $payload,
-                CURLOPT_TIMEOUT => 40,
-                CURLOPT_SSL_VERIFYPEER => true,
-            ]);
-
-            $response = curl_exec($ch);
-            $httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
-            curl_close($ch);
-
-            if ($response !== false && $httpCode === 200) {
-                $json = json_decode($response, true);
-                $answer = trim((string)($json['choices'][0]['message']['content'] ?? ''));
-                return ($answer === '无') ? '' : $answer;
-            }
+            $answer = \QQBot\Service\AiClient::chat($messages, ['max_tokens' => 800, 'temperature' => 0.3]);
         } catch (\Throwable $e) {
             $this->logger->error('Memory summarize error', ['error' => $e->getMessage()]);
+            return '';
         }
-        return '';
+        $answer = trim((string)$answer);
+        return ($answer === '' || $answer === '无') ? '' : $answer;
     }
 }

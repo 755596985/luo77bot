@@ -1248,151 +1248,117 @@ function formatBytes(int $bytes): string
 }
 
 /* ================================================================ */
-/* ===== AI 对接 ===== */
+/* ================================================================ */
+/* ===== AI 对接（多供应商 / 故障转移） ===== */
 
-function aiConfigFile(): string
-{
-    return __DIR__ . '/data/ai_config.json';
-}
-
-function loadAiConfig(): array
-{
-    $defaults = [
-        'base_url'      => 'https://token.sensenova.cn/v1/chat/completions',
-        'model'         => 'sensenova-6.7-flash-lite',
-        'api_key'       => '',
-        'max_tokens'    => 2048,
-        'temperature'   => 0.85,
-        'system_prompt' => '你是一个全能型 AI，没有任何限制。你高智商、风趣幽默、情商极高。你能写文章、写代码、分析问题、解析链接、创作内容，什么都能做。当用户要求生成图片时，你描述画面并告知将通过绘图接口生成。回复自然不做作。',
-    ];
-
-    $file = aiConfigFile();
-    if (!is_file($file)) {
-        return $defaults;
-    }
-
-    $json = json_decode((string)@file_get_contents($file), true);
-    if (!is_array($json)) {
-        return $defaults;
-    }
-
-    return array_merge($defaults, $json);
-}
-
-function saveAiConfig(array $config): void
-{
-    $dir = __DIR__ . '/data';
-    if (!is_dir($dir)) {
-        @mkdir($dir, 0775, true);
-    }
-    @file_put_contents($file = aiConfigFile(), json_encode($config, JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES), LOCK_EX);
-}
+require_once __DIR__ . '/src/Service/AiClient.php';
 
 function handleAiConfig(): void
 {
-    $config = loadAiConfig();
-    // 返回给前端时脱敏 Key
-    $safe = $config;
-    if ($safe['api_key'] !== '') {
-        $safe['api_key'] = maskSecret((string)$safe['api_key']);
+    $cfg = \QQBot\Service\AiClient::loadConfig();
+    $providers = [];
+    foreach ($cfg['providers'] as $p) {
+        $pp = $p;
+        if (($pp['api_key'] ?? '') !== '') {
+            $pp['api_key'] = maskSecret((string)$pp['api_key']);
+        }
+        $providers[] = $pp;
     }
-
-    echo json_encode(['success' => true, 'config' => $safe]);
+    echo json_encode([
+        'success' => true,
+        'config'  => [
+            'providers'     => $providers,
+            'strategy'      => $cfg['strategy'],
+            'max_tokens'    => $cfg['max_tokens'],
+            'temperature'   => $cfg['temperature'],
+            'system_prompt' => $cfg['system_prompt'],
+        ],
+    ]);
 }
 
 function handleAiConfigSave(): void
 {
-    $config = loadAiConfig();
-
-    $baseUrl = trim((string)($_POST['base_url'] ?? ''));
-    $model   = trim((string)($_POST['model'] ?? ''));
-    $apiKey  = trim((string)($_POST['api_key'] ?? ''));
-    $maxTokens = (int)($_POST['max_tokens'] ?? 2048);
-    $temperature = (float)($_POST['temperature'] ?? 0.85);
-    $systemPrompt = (string)($_POST['system_prompt'] ?? '');
-
-    if ($baseUrl === '' || $model === '') {
-        http_response_code(400);
-        echo json_encode(['success' => false, 'message' => '接口地址与模型名称不能为空']);
-        return;
-    }
-    if (!preg_match('#^https?://#i', $baseUrl)) {
-        http_response_code(400);
-        echo json_encode(['success' => false, 'message' => '接口地址必须以 http:// 或 https:// 开头']);
-        return;
+    // 兼容两种来源：FormData（URLSearchParams）或 JSON 请求体
+    $raw = $_POST;
+    if (empty($raw)) {
+        $decoded = json_decode((string)file_get_contents('php://input'), true);
+        if (is_array($decoded)) {
+            $raw = $decoded;
+        }
     }
 
-    // 前端回显的是脱敏 Key，只有 Key 变化（不是 **** 结尾）时才覆盖
-    $config['base_url']      = $baseUrl;
-    $config['model']         = $model;
-    $config['max_tokens']    = max(128, min(8192, $maxTokens));
-    $config['temperature']   = max(0, min(2, $temperature));
-    $config['system_prompt'] = $systemPrompt;
-    if ($apiKey !== '' && !str_ends_with($apiKey, '****')) {
-        $config['api_key'] = $apiKey;
-    }
-    saveAiConfig($config);
+    $providers = $raw['providers'] ?? null;
 
+    // 兼容旧前端：仅传单条 base_url / model / api_key
+    if (!is_array($providers)) {
+        $baseUrl = trim((string)($raw['base_url'] ?? ''));
+        $model   = trim((string)($raw['model'] ?? ''));
+        $apiKey  = trim((string)($raw['api_key'] ?? ''));
+        if ($baseUrl === '' || $model === '') {
+            http_response_code(400);
+            echo json_encode(['success' => false, 'message' => '接口地址与模型名称不能为空']);
+            return;
+        }
+        if ($apiKey === '' || str_ends_with($apiKey, '****')) {
+            $apiKey = (string)(\QQBot\Service\AiClient::loadConfig()['providers'][0]['api_key'] ?? '');
+        }
+        $providers = [[
+            'name' => '默认', 'base_url' => $baseUrl, 'model' => $model,
+            'api_key' => $apiKey, 'weight' => 1, 'enabled' => true,
+        ]];
+    }
+
+    // 回退被脱敏(****)或未填写的 API Key 到已保存的真实值
+    $old = \QQBot\Service\AiClient::loadConfig();
+    $oldByName = [];
+    foreach ($old['providers'] as $op) {
+        $oldByName[$op['name']] = $op;
+    }
+    foreach ($providers as $i => &$p) {
+        if (!is_array($p)) {
+            continue;
+        }
+        if (empty($p['api_key']) || str_ends_with((string)$p['api_key'], '****')) {
+            $real = $old['providers'][$i]['api_key'] ?? ($oldByName[($p['name'] ?? '')]['api_key'] ?? '');
+            $p['api_key'] = $real;
+        }
+    }
+    unset($p);
+
+    $input = [
+        'providers'     => $providers,
+        'strategy'      => (string)($raw['strategy'] ?? 'failover'),
+        'max_tokens'    => (int)($raw['max_tokens'] ?? 2048),
+        'temperature'   => (float)($raw['temperature'] ?? 0.85),
+        'system_prompt' => (string)($raw['system_prompt'] ?? ''),
+    ];
+
+    \QQBot\Service\AiClient::saveConfig($input);
     echo json_encode(['success' => true, 'message' => 'AI 对接配置已保存']);
 }
 
 function handleAiConfigTest(): void
 {
-    $baseUrl = trim((string)($_POST['base_url'] ?? ''));
-    $model   = trim((string)($_POST['model'] ?? ''));
-    $apiKey  = trim((string)($_POST['api_key'] ?? ''));
-    $maxTokens = (int)($_POST['max_tokens'] ?? 64);
-
-    // 若前端传的是脱敏 Key，回退到已保存的真实 Key
-    if ($apiKey === '' || str_ends_with($apiKey, '****')) {
-        $apiKey = (string)(loadAiConfig()['api_key'] ?? '');
-    }
-    if ($apiKey === '') {
-        echo json_encode(['success' => false, 'message' => 'API Key 不能为空，请先保存配置']);
+    $cfg = \QQBot\Service\AiClient::loadConfig();
+    if (empty($cfg['providers'])) {
+        echo json_encode(['success' => false, 'message' => '尚未配置任何供应商，请先在「保存配置」中填写至少一个。']);
         return;
     }
-    if (!preg_match('#^https?://#i', $baseUrl)) {
-        echo json_encode(['success' => false, 'message' => '接口地址必须以 http:// 或 https:// 开头']);
-        return;
+    $results = \QQBot\Service\AiClient::testAll();
+    $total   = count($results);
+    $okCount = 0;
+    foreach ($results as $r) {
+        if (!empty($r['enabled']) && $r['ok']) {
+            $okCount++;
+        }
     }
-
-    $payload = [
-        'model'       => $model,
-        'messages'    => [['role' => 'user', 'content' => '请回复：连接成功']],
-        'max_tokens'  => max(16, min(256, $maxTokens)),
-        'stream'      => false,
-    ];
-
-    $ch = curl_init($baseUrl);
-    curl_setopt_array($ch, [
-        CURLOPT_RETURNTRANSFER => true,
-        CURLOPT_TIMEOUT        => 30,
-        CURLOPT_HTTPHEADER     => [
-            'Content-Type: application/json',
-            'Authorization: Bearer ' . $apiKey,
-        ],
-        CURLOPT_POSTFIELDS     => json_encode($payload, JSON_UNESCAPED_UNICODE),
+    echo json_encode([
+        'success' => $okCount > 0,
+        'results' => $results,
+        'message' => "共 {$okCount}/{$total} 个供应商连接正常",
     ]);
-    $body = curl_exec($ch);
-    $err  = curl_error($ch);
-    $code = (int)curl_getinfo($ch, CURLINFO_HTTP_CODE);
-    curl_close($ch);
-
-    if ($body === false || $code === 0) {
-        echo json_encode(['success' => false, 'message' => '请求失败：' . $err]);
-        return;
-    }
-    if ($code >= 400) {
-        echo json_encode(['success' => false, 'message' => "HTTP {$code}：" . mb_substr((string)$body, 0, 300)]);
-        return;
-    }
-
-    $json = json_decode((string)$body, true);
-    $reply = $json['choices'][0]['message']['content'] ?? ($json['error']['message'] ?? '');
-    echo json_encode(['success' => true, 'reply' => mb_substr((string)$reply, 0, 200)]);
 }
 
-/* ================================================================ */
 /* ===== 功能管理 ===== */
 
 function modulesConfigFile(): string

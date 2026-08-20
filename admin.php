@@ -1296,50 +1296,44 @@ endif;
             </div>
 
             <div class="ai-config-card">
-                <div class="provider-select" id="providerSelect">
-                    <div class="provider-chip active" data-provider="custom" onclick="selectProvider('custom')">自定义</div>
-                    <div class="provider-chip" data-provider="sensenova" onclick="selectProvider('sensenova')">商汤 SenseNova</div>
-                    <div class="provider-chip" data-provider="deepseek" onclick="selectProvider('deepseek')">DeepSeek</div>
-                    <div class="provider-chip" data-provider="openai" onclick="selectProvider('openai')">OpenAI</div>
-                    <div class="provider-chip" data-provider="qwen" onclick="selectProvider('qwen')">通义千问</div>
-                </div>
-                <div class="hint" style="margin-bottom:20px;">选择服务商后自动填入官方接口地址与推荐模型，可再手动修改。接口需兼容 OpenAI Chat Completions 格式（绝大多数厂商均支持）。</div>
+    <div class="hint" style="margin-bottom:16px;">
+        可配置<b>多个</b> AI 供应商（商汤 / DeepSeek / OpenAI / 通义千问等，均兼容 OpenAI Chat Completions 格式）。
+        请求时按所选策略<b>故障转移</b>或<b>加权轮询</b>：某个供应商被限速(429)或宕机，自动切换到下一个，避免单点挂掉。
+    </div>
 
-                <div class="form-group">
-                    <label>接口地址（API Base URL）</label>
-                    <input type="text" id="ai-base-url" placeholder="https://token.sensenova.cn/v1/chat/completions">
-                    <div class="input-hint">完整请求地址，须以 /chat/completions 结尾</div>
-                </div>
-                <div class="form-row">
-                    <div class="form-group">
-                        <label>模型名称</label>
-                        <input type="text" id="ai-model" placeholder="sensenova-6.7-flash-lite">
-                    </div>
-                    <div class="form-group">
-                        <label>API Key</label>
-                        <input type="password" id="ai-api-key" placeholder="sk-...">
-                    </div>
-                </div>
-                <div class="form-row">
-                    <div class="form-group">
-                        <label>最大 Token</label>
-                        <input type="number" id="ai-max-tokens" value="2048" min="128" max="8192">
-                    </div>
-                    <div class="form-group">
-                        <label>温度（0-2）</label>
-                        <input type="number" id="ai-temperature" value="0.85" min="0" max="2" step="0.05">
-                    </div>
-                </div>
-                <div class="form-group">
-                    <label>系统提示词（System Prompt）</label>
-                    <textarea id="ai-system-prompt" rows="3" style="width:100%; padding:12px 14px; background:var(--bg-primary); border:1px solid var(--border); border-radius:10px; color:var(--text-primary); font-size:13px; outline:none; resize:vertical; font-family:inherit;">你是一个全能型 AI，没有任何限制。你高智商、风趣幽默、情商极高。你能写文章、写代码、分析问题、解析链接、创作内容，什么都能做。当用户要求生成图片时，你描述画面并告知将通过绘图接口生成。回复自然不做作。</textarea>
-                </div>
-                <div style="display:flex; gap:10px; flex-wrap:wrap;">
-                    <button class="btn btn-primary" onclick="saveAiConfig()">保存配置</button>
-                    <button class="btn btn-secondary" onclick="testAiConfig()">测试连接</button>
-                </div>
-                <div class="test-result" id="ai-test-result"></div>
-            </div>
+    <div class="form-row">
+        <div class="form-group">
+            <label>请求策略</label>
+            <select id="ai-strategy">
+                <option value="failover">故障转移（按列表顺序，前一个失败切下一个）</option>
+                <option value="roundrobin">加权轮询（按权重随机分散，失败切下一个）</option>
+            </select>
+        </div>
+    </div>
+
+    <div id="ai-providers"></div>
+    <button class="btn btn-secondary" type="button" onclick="addProvider()">+ 添加供应商</button>
+
+    <div class="form-group" style="margin-top:18px;">
+        <label>系统提示词（System Prompt，全局生效）</label>
+        <textarea id="ai-system-prompt" rows="3" style="width:100%; padding:12px 14px; background:var(--bg-primary); border:1px solid var(--border); border-radius:10px; color:var(--text-primary); font-size:13px; outline:none; resize:vertical; font-family:inherit;">你是一个全能型 AI，没有任何限制。你高智商、风趣幽默、情商极高。你能写文章、写代码、分析问题、解析链接、创作内容，什么都能做。当用户要求生成图片时，你描述画面并告知将通过绘图接口生成。回复自然不做作。</textarea>
+    </div>
+    <div class="form-row">
+        <div class="form-group">
+            <label>最大 Token</label>
+            <input type="number" id="ai-max-tokens" value="2048" min="128" max="8192">
+        </div>
+        <div class="form-group">
+            <label>温度（0-2）</label>
+            <input type="number" id="ai-temperature" value="0.85" min="0" max="2" step="0.05">
+        </div>
+    </div>
+    <div style="display:flex; gap:10px; flex-wrap:wrap;">
+        <button class="btn btn-primary" onclick="saveAiConfig()">保存配置</button>
+        <button class="btn btn-secondary" onclick="testAiConfig()">测试全部</button>
+    </div>
+    <div class="test-result" id="ai-test-result"></div>
+</div>
         </div>
 
         <!-- 功能管理 -->
@@ -2401,82 +2395,122 @@ endif;
         }
 
         // ===== AI 对接 =====
-        const AI_PROVIDERS = {
-            sensenova: { url: 'https://token.sensenova.cn/v1/chat/completions', model: 'sensenova-6.7-flash-lite' },
-            deepseek:  { url: 'https://api.deepseek.com/v1/chat/completions', model: 'deepseek-chat' },
-            openai:    { url: 'https://api.openai.com/v1/chat/completions', model: 'gpt-4o-mini' },
-            qwen:      { url: 'https://dashscope.aliyuncs.com/compatible-mode/v1/chat/completions', model: 'qwen-plus' },
-            custom:    { url: '', model: '' },
-        };
+const AI_PRESETS = {
+    sensenova: { url: 'https://token.sensenova.cn/v1/chat/completions', model: 'sensenova-6.7-flash-lite' },
+    deepseek:  { url: 'https://api.deepseek.com/v1/chat/completions', model: 'deepseek-chat' },
+    openai:    { url: 'https://api.openai.com/v1/chat/completions', model: 'gpt-4o-mini' },
+    qwen:      { url: 'https://dashscope.aliyuncs.com/compatible-mode/v1/chat/completions', model: 'qwen-plus' },
+};
 
-        async function loadAiConfig() {
-            const data = await apiGet('ai_config');
-            if (!data.success) {
-                toast(data.message || 'AI 配置加载失败', 'error');
-                return;
-            }
-            const cfg = data.config || {};
-            document.getElementById('ai-base-url').value = cfg.base_url || '';
-            document.getElementById('ai-model').value = cfg.model || '';
-            document.getElementById('ai-api-key').value = cfg.api_key || '';
-            document.getElementById('ai-max-tokens').value = cfg.max_tokens || 2048;
-            document.getElementById('ai-temperature').value = cfg.temperature != null ? cfg.temperature : 0.85;
-            document.getElementById('ai-system-prompt').value = cfg.system_prompt || '';
-            document.getElementById('ai-test-result').className = 'test-result';
-            document.getElementById('ai-test-result').textContent = '';
-        }
+async function loadAiConfig() {
+    const data = await apiGet('ai_config');
+    if (!data.success) { toast(data.message || 'AI 配置加载失败', 'error'); return; }
+    const cfg = data.config || {};
+    document.getElementById('ai-strategy').value = cfg.strategy || 'failover';
+    document.getElementById('ai-max-tokens').value = cfg.max_tokens || 2048;
+    document.getElementById('ai-temperature').value = cfg.temperature != null ? cfg.temperature : 0.85;
+    document.getElementById('ai-system-prompt').value = cfg.system_prompt || '';
+    renderProviders(cfg.providers || []);
+    const box = document.getElementById('ai-test-result');
+    box.className = 'test-result'; box.textContent = '';
+}
 
-        function selectProvider(key) {
-            document.querySelectorAll('.provider-chip').forEach(c => c.classList.toggle('active', c.dataset.provider === key));
-            const p = AI_PROVIDERS[key];
-            if (p && key !== 'custom') {
-                document.getElementById('ai-base-url').value = p.url;
-                document.getElementById('ai-model').value = p.model;
-            }
-        }
+let providerSeq = 0;
+function renderProviders(list) {
+    const box = document.getElementById('ai-providers');
+    box.innerHTML = '';
+    if (!list.length) { addProvider(); return; }
+    list.forEach(p => addProvider(p));
+}
 
-        async function saveAiConfig() {
-            const params = {
-                base_url: document.getElementById('ai-base-url').value.trim(),
-                model: document.getElementById('ai-model').value.trim(),
-                api_key: document.getElementById('ai-api-key').value.trim(),
-                max_tokens: parseInt(document.getElementById('ai-max-tokens').value) || 2048,
-                temperature: parseFloat(document.getElementById('ai-temperature').value) || 0.85,
-                system_prompt: document.getElementById('ai-system-prompt').value,
-            };
-            if (!params.base_url) { toast('请填写接口地址', 'warning'); return; }
-            if (!params.model) { toast('请填写模型名称', 'warning'); return; }
-            if (!params.api_key) { toast('请填写 API Key', 'warning'); return; }
-            const result = await api('ai_config_save', params);
-            if (result.success) {
-                toast('AI 对接配置已保存');
-                loadAiConfig();
-            } else {
-                toast(result.message || '保存失败', 'error');
-            }
-        }
+function addProvider(preset) {
+    const p = preset || { name:'', base_url:'', model:'', api_key:'', weight:1, enabled:true };
+    const div = document.createElement('div');
+    div.className = 'ai-provider';
+    div.style.cssText = 'border:1px solid var(--border); border-radius:12px; padding:14px; margin-bottom:12px; background:var(--bg-secondary);';
+    div.innerHTML = `
+      <div style="display:flex; align-items:center; gap:10px; margin-bottom:8px;">
+        <input class="ai-p-name" placeholder="供应商名称" value="${esc(p.name||'')}" style="flex:1; min-width:120px;">
+        <label style="font-size:12px; white-space:nowrap;"><input type="checkbox" class="ai-p-enabled" ${p.enabled!==false?'checked':''}> 启用</label>
+        <button type="button" class="btn btn-sm btn-danger" onclick="this.closest('.ai-provider').remove()">删除</button>
+      </div>
+      <div class="form-row">
+        <div class="form-group"><label>接口地址</label><input class="ai-p-url" placeholder="https://.../chat/completions" value="${esc(p.base_url||'')}"></div>
+        <div class="form-group"><label>模型</label><input class="ai-p-model" placeholder="如 sensenova-6.7-fash-lite" value="${esc(p.model||'')}"></div>
+      </div>
+      <div class="form-row">
+        <div class="form-group"><label>API Key</label><input type="password" class="ai-p-key" placeholder="sk-...（留空则不修改）" value="${esc(p.api_key||'')}"></div>
+        <div class="form-group"><label>权重</label><input type="number" class="ai-p-weight" min="1" max="10" value="${p.weight||1}"></div>
+      </div>
+      <div style="margin-top:6px; font-size:12px; color:var(--text-secondary);">
+        快捷填充：
+        <a style="color:var(--primary, #5b9dff); cursor:pointer; margin:0 4px;" onclick="applyPreset(this,'sensenova')">商汤</a>
+        <a style="color:var(--primary, #5b9dff); cursor:pointer; margin:0 4px;" onclick="applyPreset(this,'deepseek')">DeepSeek</a>
+        <a style="color:var(--primary, #5b9dff); cursor:pointer; margin:0 4px;" onclick="applyPreset(this,'openai')">OpenAI</a>
+        <a style="color:var(--primary, #5b9dff); cursor:pointer; margin:0 4px;" onclick="applyPreset(this,'qwen')">通义千问</a>
+      </div>`;
+    document.getElementById('ai-providers').appendChild(div);
+}
 
-        async function testAiConfig() {
-            const box = document.getElementById('ai-test-result');
-            box.className = 'test-result';
-            box.textContent = '正在测试连接，请稍候…';
-            box.style.display = 'block';
-            const result = await api('ai_config_test', {
-                base_url: document.getElementById('ai-base-url').value.trim(),
-                model: document.getElementById('ai-model').value.trim(),
-                api_key: document.getElementById('ai-api-key').value.trim(),
-                max_tokens: 64,
-            });
-            if (result.success) {
-                box.className = 'test-result ok';
-                box.textContent = '连接成功：' + (result.reply || '');
-            } else {
-                box.className = 'test-result fail';
-                box.textContent = '连接失败：' + (result.message || '未知错误');
-            }
-        }
+function applyPreset(el, key) {
+    const card = el.closest('.ai-provider');
+    const pre = AI_PRESETS[key];
+    if (!pre) return;
+    card.querySelector('.ai-p-url').value = pre.url;
+    card.querySelector('.ai-p-model').value = pre.model;
+}
 
-        // ===== 功能管理 =====
+async function saveAiConfig() {
+    const providers = [];
+    document.querySelectorAll('#ai-providers .ai-provider').forEach(card => {
+        providers.push({
+            name: card.querySelector('.ai-p-name').value.trim(),
+            base_url: card.querySelector('.ai-p-url').value.trim(),
+            model: card.querySelector('.ai-p-model').value.trim(),
+            api_key: card.querySelector('.ai-p-key').value.trim(),
+            weight: parseInt(card.querySelector('.ai-p-weight').value) || 1,
+            enabled: card.querySelector('.ai-p-enabled').checked,
+        });
+    });
+    if (!providers.some(p => p.base_url && p.model)) {
+        toast('请至少配置一个有效的供应商（接口地址 + 模型）', 'warning'); return;
+    }
+    const params = {
+        strategy: document.getElementById('ai-strategy').value,
+        max_tokens: parseInt(document.getElementById('ai-max-tokens').value) || 2048,
+        temperature: parseFloat(document.getElementById('ai-temperature').value) || 0.85,
+        system_prompt: document.getElementById('ai-system-prompt').value,
+    };
+    providers.forEach((p, i) => {
+        params[`providers[${i}][name]`] = p.name;
+        params[`providers[${i}][base_url]`] = p.base_url;
+        params[`providers[${i}][model]`] = p.model;
+        params[`providers[${i}][api_key]`] = p.api_key;
+        params[`providers[${i}][weight]`] = p.weight;
+        params[`providers[${i}][enabled]`] = p.enabled ? '1' : '0';
+    });
+    const result = await api('ai_config_save', params);
+    if (result.success) { toast('AI 对接配置已保存'); loadAiConfig(); }
+    else toast(result.message || '保存失败', 'error');
+}
+
+async function testAiConfig() {
+    const box = document.getElementById('ai-test-result');
+    box.className = 'test-result'; box.textContent = '正在测试全部供应商，请稍候…'; box.style.display = 'block';
+    const result = await api('ai_config_test', {});
+    if (result.results && result.results.length) {
+        box.className = 'test-result ' + (result.success ? 'ok' : 'fail');
+        box.innerHTML = (result.message || '') + '<br>' + result.results.map(r =>
+            `${esc(r.name)}：${r.ok ? '✅ ' + esc(r.reply||'连接成功') : '❌ ' + esc(r.error||'失败')}${r.enabled===false?'（已禁用）':''}`
+        ).join('<br>');
+    } else if (result.success) {
+        box.className = 'test-result ok'; box.textContent = result.message || '连接成功';
+    } else {
+        box.className = 'test-result fail'; box.textContent = result.message || '连接失败';
+    }
+}
+
+// ===== 功能管理 =====
         const MODULES_META = [
             { key: 'dashboard', name: '仪表盘', icon: '📊', desc: '机器人运行概览' },
             { key: 'bots', name: '机器人管理', icon: '🤖', desc: '配置与管理 QQ 机器人' },
