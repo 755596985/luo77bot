@@ -18,8 +18,8 @@ class AiClient
 {
     public static function configFile(): string
     {
-        // 本文件位于 src/Service/，配置位于项目根 data/
-        return __DIR__ . '/../data/ai_config.json';
+        // 本文件位于 src/Service/，配置位于项目根 data/（需上溯两级）
+        return __DIR__ . '/../../data/ai_config.json';
     }
 
     public static function defaults(): array
