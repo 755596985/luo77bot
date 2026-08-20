@@ -199,13 +199,21 @@ class AiClient
         if (!\is_array($json)) {
             return ['ok' => false, 'content' => null, 'http' => 200, 'error' => '响应解析失败', 'rate_limited' => false];
         }
-        $content = $json['choices'][0]['message']['content'] ?? null;
-        if (!\is_string($content) || \trim($content) === '') {
+        $msg     = $json['choices'][0]['message'] ?? [];
+        $content = $msg['content'] ?? null;
+        // 推理模型（商汤 6.7 / GLM-4.5+ 等）可能只有 reasoning 无 content，做兜底
+        if (!\is_string($content) || \trim((string)$content) === '') {
+            $reasoning = $msg['reasoning'] ?? ($msg['reasoning_content'] ?? null);
+            if (\is_string($reasoning) && \trim($reasoning) !== '') {
+                $content = $reasoning;
+            }
+        }
+        if (!\is_string($content) || \trim((string)$content) === '') {
             $e = $json['error']['message'] ?? '';
             return ['ok' => false, 'content' => null, 'http' => 200, 'error' => $e ?: '空回复', 'rate_limited' => false];
         }
 
-        return ['ok' => true, 'content' => \trim($content), 'http' => 200, 'error' => '', 'rate_limited' => false];
+        return ['ok' => true, 'content' => \trim((string)$content), 'http' => 200, 'error' => '', 'rate_limited' => false];
     }
 
     /**
@@ -303,7 +311,7 @@ class AiClient
                 $out[] = ['name' => $p['name'], 'enabled' => true, 'ok' => false, 'http' => 0, 'reply' => '', 'error' => 'API Key 为空'];
                 continue;
             }
-            $res = self::requestSingle($p, $testMsg, 64, 0.3, is_callable($transport) ? $transport : null);
+            $res = self::requestSingle($p, $testMsg, 512, 0.3, is_callable($transport) ? $transport : null);
             $out[] = [
                 'name'    => $p['name'],
                 'enabled' => true,

@@ -1299,7 +1299,7 @@ function handleAiConfigSave(): void
             echo json_encode(['success' => false, 'message' => '接口地址与模型名称不能为空']);
             return;
         }
-        if ($apiKey === '' || str_ends_with($apiKey, '****')) {
+        if ($apiKey === '' || str_contains($apiKey, '*')) {   // 含 * 即视为脱敏回显值
             $apiKey = (string)(\QQBot\Service\AiClient::loadConfig()['providers'][0]['api_key'] ?? '');
         }
         $providers = [[
@@ -1318,7 +1318,8 @@ function handleAiConfigSave(): void
         if (!is_array($p)) {
             continue;
         }
-        if (empty($p['api_key']) || str_ends_with((string)$p['api_key'], '****')) {
+        if ((string)($p['api_key'] ?? '') !== '' && str_contains((string)$p['api_key'], '*')) {
+            // 回显的脱敏值（maskSecret 前4+*+后4）：回退到已保存的真实 key，避免覆盖丢失
             $real = $old['providers'][$i]['api_key'] ?? ($oldByName[($p['name'] ?? '')]['api_key'] ?? '');
             $p['api_key'] = $real;
         }
