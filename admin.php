@@ -1464,7 +1464,7 @@ endif;
                 <div class="form-row">
                     <div class="form-group">
                         <label>请求地址（接口 URL）</label>
-                        <input type="text" id="callback-copy-url" placeholder="如：http://98k.yy9a.cn/index.php/supplier/order/copy" style="width:100%;">
+                        <input type="text" id="callback-copy-url" placeholder="如：https://your-supplier.com/order/copy" style="width:100%;">
                     </div>
                     <div class="form-group">
                         <label>请求 Token</label>

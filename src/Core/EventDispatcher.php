@@ -13,6 +13,14 @@ class EventDispatcher
     /** @var array<string, array<callable>> */
     private array $listeners = [];
 
+    /** @var Logger|null 可选的日志记录器，未注入时回退到 error_log */
+    private ?Logger $logger = null;
+
+    public function setLogger(Logger $logger): void
+    {
+        $this->logger = $logger;
+    }
+
     /**
      * 注册事件监听器
      *
@@ -41,7 +49,18 @@ class EventDispatcher
         }
 
         foreach ($this->listeners[$eventName] as $item) {
-            $item['listener']($event);
+            try {
+                $item['listener']($event);
+            } catch (\Throwable $e) {
+                // 单个插件异常隔离：记录日志后继续，避免影响其余插件与整体 webhook 响应
+                $msg = '插件处理事件 ' . $eventName . ' 时抛出异常: ' . $e->getMessage();
+                if ($this->logger !== null) {
+                    $this->logger->error($msg, ['file' => $e->getFile(), 'line' => $e->getLine()]);
+                } else {
+                    error_log('[EventDispatcher] ' . $msg . ' @ ' . $e->getFile() . ':' . $e->getLine());
+                }
+                continue;
+            }
 
             // 如果事件设置了停止传播，则中断
             if (method_exists($event, 'isPropagationStopped') && $event->isPropagationStopped()) {

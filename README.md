@@ -497,6 +497,20 @@ logs/
 
 ---
 
+
+## 安全与部署建议
+
+本仓库为开源分发版本，已在原版基础上做了安全加固，部署与维护请注意：
+
+- **后台默认口令为 `admin123`**：仅为了方便他人快速体验，首次部署后请立即修改；推荐通过环境变量 `QQBOT_ADMIN_PASSWORD` 设置强密码（覆盖默认值，无需改代码）。
+- **密钥用环境变量注入**：`client_secret` 等敏感信息建议通过环境变量（见 `config/bots.example.php` 中的 `QQBOT_BOT1_SECRET` / `QQBOT_BOT2_SECRET`）注入，不要把密钥写进仓库。
+- **后台在线文件编辑器默认关闭**：设置环境变量 `QQBOT_ENABLE_EDITOR=1` 才允许写入/创建/删除插件文件；后台 API Token 鉴权也默认关闭，设置 `QQBOT_ADMIN_TOKEN` 才会启用。
+- **Webhook 签名校验默认开启**：Ed25519 验签请勿关闭，避免被伪造请求调用。
+- **回调「供货商拉取」默认关闭**：代充/卡密场景下，需在后台填写供货商地址与 Token 后才启用；相关密钥不要写进代码。
+- **配置与运行数据不入仓**：仓库已用 `.gitignore` 忽略 `vendor/`、`data/`、`logs/`、`temp/`、`config/bots.php`、`.log`；请始终以 `config/bots.example.php` 为模板复制出 `config/bots.php`。
+
+---
+
 ## 常见问题
 
 **Q: Webhook 验证失败？**  

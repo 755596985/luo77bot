@@ -6,8 +6,10 @@ declare(strict_types=1);
  * 验证管理密码，设置 PHP Session
  */
 
-// 管理密码（可通过环境变量 QQBOT_ADMIN_PASSWORD 覆盖）
-$ADMIN_PASSWORD = $_ENV['QQBOT_ADMIN_PASSWORD'] ?? 'admin123';
+// 管理密码：优先使用环境变量 QQBOT_ADMIN_PASSWORD；未设置时回退到默认口令 admin123
+// 安全提示：admin123 仅为便于他人快速部署的默认口令，生产环境请务必通过环境变量 QQBOT_ADMIN_PASSWORD 设置强密码
+define('QQBOT_DEFAULT_ADMIN_PASSWORD', 'admin123');
+$ADMIN_PASSWORD = $_ENV['QQBOT_ADMIN_PASSWORD'] ?? QQBOT_DEFAULT_ADMIN_PASSWORD;
 
 header('Content-Type: application/json');
 

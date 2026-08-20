@@ -28,6 +28,7 @@ class Application
         $this->logger = new Logger($this->config->get('log', []));
 
         $sharedDispatcher = new EventDispatcher();
+        $sharedDispatcher->setLogger($this->logger);
         $this->pluginRegistry = new PluginRegistry($this->config->get('plugin.data_path', __DIR__ . '/../../data'));
         $this->botManager    = new BotManager($this->config, $this->logger, $sharedDispatcher);
         $this->pluginManager = new PluginManager($this->logger, $sharedDispatcher, $this->pluginRegistry);

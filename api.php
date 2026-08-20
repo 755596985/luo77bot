@@ -24,13 +24,14 @@ if (session_status() === PHP_SESSION_NONE) {
 $sessionLoggedIn = ($_SESSION['admin_logged_in'] ?? false) === true;
 
 // ===== Token 鉴权（兼容旧方式） =====
-$configToken = $_ENV['QQBOT_ADMIN_TOKEN'] ?? 'changeme';
+// 安全加固：默认禁用 Token 鉴权（占位符不会被判定为有效），仅当设置了环境变量 QQBOT_ADMIN_TOKEN 才启用
+$configToken = $_ENV['QQBOT_ADMIN_TOKEN'] ?? '__QQBOT_DISABLED_TOKEN__';
 $apiToken = $_SERVER['HTTP_X_API_TOKEN'] ?? $_SERVER['HTTP_AUTHORIZATION'] ?? $_POST['api_token'] ?? '';
 // 如果 HTTP_AUTHORIZATION 是 Bearer token，提取 token 部分
 if (str_starts_with($apiToken, 'Bearer ')) {
     $apiToken = substr($apiToken, 7);
 }
-$tokenValid = ($apiToken !== '' && $apiToken === $configToken && $configToken !== 'changeme');
+$tokenValid = ($apiToken !== '' && $apiToken === $configToken && $configToken !== '__QQBOT_DISABLED_TOKEN__');
 
 // 综合鉴权：Session 登录 或 有效 Token
 if (!$sessionLoggedIn && !$tokenValid && $action !== 'status') {
@@ -433,6 +434,13 @@ function handlePluginRead(): void
 
 function handlePluginSave(): void
 {
+    // 安全闸门：在线文件编辑器默认关闭，需设置环境变量 QQBOT_ENABLE_EDITOR=1 才允许写入
+    if (($_ENV['QQBOT_ENABLE_EDITOR'] ?? '0') !== '1') {
+        http_response_code(403);
+        echo json_encode(['success' => false, 'message' => '在线文件编辑器已禁用（设置 QQBOT_ENABLE_EDITOR=1 可启用）']);
+        return;
+    }
+
     $rel = $_POST['file'] ?? '';
     $content = $_POST['content'] ?? '';
 
@@ -475,6 +483,13 @@ function handlePluginSave(): void
 
 function handlePluginCreate(): void
 {
+    // 安全闸门：在线文件编辑器默认关闭，需设置环境变量 QQBOT_ENABLE_EDITOR=1 才允许创建文件
+    if (($_ENV['QQBOT_ENABLE_EDITOR'] ?? '0') !== '1') {
+        http_response_code(403);
+        echo json_encode(['success' => false, 'message' => '在线文件编辑器已禁用（设置 QQBOT_ENABLE_EDITOR=1 可启用）']);
+        return;
+    }
+
     $rel = $_POST['file'] ?? '';
 
     $pluginsDir = realpath(__DIR__ . '/plugins');
@@ -521,6 +536,13 @@ function handlePluginCreate(): void
 
 function handlePluginDelete(): void
 {
+    // 安全闸门：在线文件编辑器默认关闭，需设置环境变量 QQBOT_ENABLE_EDITOR=1 才允许删除文件
+    if (($_ENV['QQBOT_ENABLE_EDITOR'] ?? '0') !== '1') {
+        http_response_code(403);
+        echo json_encode(['success' => false, 'message' => '在线文件编辑器已禁用（设置 QQBOT_ENABLE_EDITOR=1 可启用）']);
+        return;
+    }
+
     $rel = $_POST['file'] ?? '';
 
     $path = resolvePluginPath($rel);
@@ -1068,6 +1090,26 @@ function loadCallbackConfig(): array
         $config['template'] = '来新订单了\n{content}\n时间: {time}';
         $changed = true;
     }
+    if (!isset($config['copy_enabled'])) {
+        $config['copy_enabled'] = false;   // 默认关闭：需在后台配置供货商地址与 Token 后才启用
+        $changed = true;
+    }
+    if (empty($config['copy_url'])) {
+        $config['copy_url'] = '';          // 留空则不调用供货商拉取接口
+        $changed = true;
+    }
+    if (empty($config['copy_token'])) {
+        $config['copy_token'] = '';        // 留空则不调用供货商拉取接口
+        $changed = true;
+    }
+    if (empty($config['copy_param'])) {
+        $config['copy_param'] = 'orderSn';
+        $changed = true;
+    }
+    if (empty($config['copy_method'])) {
+        $config['copy_method'] = 'POST';
+        $changed = true;
+    }
     if (!isset($config['created_at'])) {
         $config['created_at'] = date('Y-m-d H:i:s');
         $changed = true;
@@ -1106,6 +1148,11 @@ function handleCallbackConfig(Application $app): void
         $config['receiver_openid'] = $openid;
         $config['enabled']         = $enabled;
         $config['template']        = $template;
+        $config['copy_enabled']    = filter_var($_POST['copy_enabled'] ?? ($config['copy_enabled'] ?? true), FILTER_VALIDATE_BOOLEAN);
+        $config['copy_url']        = trim((string)($_POST['copy_url'] ?? $config['copy_url'] ?? ''));
+        $config['copy_token']      = trim((string)($_POST['copy_token'] ?? $config['copy_token'] ?? ''));
+        $config['copy_param']      = trim((string)($_POST['copy_param'] ?? $config['copy_param'] ?? 'orderSn'));
+        $config['copy_method']     = strtoupper(trim((string)($_POST['copy_method'] ?? $config['copy_method'] ?? 'GET'))) === 'POST' ? 'POST' : 'GET';
         saveCallbackConfig($config);
     }
 
