@@ -192,7 +192,7 @@ class AiClient
         }
         if ($http !== 200) {
             // 4xx（401/403/404/400 等）：视为该供应商不可用，交由上层切换下一个
-            return ['ok' => false, 'content' => null, 'http' => $http, 'error' => "HTTP $http：" . \mb_substr($body, 0, 200), 'rate_limited' => false];
+            return ['ok' => false, 'content' => null, 'http' => $http, 'error' => "HTTP {$http}：" . \mb_substr($body, 0, 200), 'rate_limited' => false];
         }
 
         $json = \json_decode($body, true);
