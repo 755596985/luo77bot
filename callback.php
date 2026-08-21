@@ -146,17 +146,33 @@ if ($source === '') {
     $source = (string)($_SERVER['HTTP_HOST'] ?? 'unknown');
 }
 
-// 4.5 自动拉取充值账号：调用供货商 order/copy 接口（获取后订单自动变为处理中 status=2）
-$extraLine = '';
-if ($orderNo !== null && $orderNo !== '' && (bool)($config['copy_enabled'] ?? false)) {
-    $copyUrl    = (string)($config['copy_url'] ?? '');
-    $copyToken  = (string)($config['copy_token'] ?? '');
-    $copyParam  = (string)($config['copy_param'] ?? 'orderSn');
-    $copyMethod = strtoupper((string)($config['copy_method'] ?? 'POST'));
-    $sep        = strpos($copyUrl, '?') === false ? '?' : '&';
+// 4.5 先发第一条通知（只有订单信息，没有充值账号）
+//     业务场景：拉取充值账号 = 供货商 10 分钟倒计时开始。
+//     原流程先拉账号再通知，白白浪费几十秒。
+//     改为：立刻发「新订单」通知让你第一时间知道有单 → 后台再拉账号补发第二条。
+//     只有启用了自动拉取充值账号时才走两步流程，否则保持原样一次性发完整内容。
+$copyEnabled = $orderNo !== null && $orderNo !== '' && (bool)($config['copy_enabled'] ?? false);
 
-    // 依次尝试常见 Token 传法，命中 code=0 且有 recharge_account 即成功
-    // POST 优先把 Token 放入 JSON body（第三方接口规范：{"token":"...","orderSn":"..."}）
+// 4.6 自动拉取充值账号：调用供货商 order/copy 接口（获取后订单自动变为处理中 status=2）
+//     提取为独立函数，供「先通知后补账号」流程调用
+$copyConfig = [
+    'url'    => (string)($config['copy_url'] ?? ''),
+    'token'  => (string)($config['copy_token'] ?? ''),
+    'param'  => (string)($config['copy_param'] ?? 'orderSn'),
+    'method' => strtoupper((string)($config['copy_method'] ?? 'POST')),
+];
+$copyTimeout = 8; // 单次拉取超时（秒），比原来 10 秒收紧，避免拖太久
+
+/**
+ * 拉取供货商充值账号
+ * @return array{ok:bool, account:string, raw:string}
+ */
+function fetchRechargeAccount(string $orderNo, array $cfg, int $timeout): array
+{
+    if ($cfg['url'] === '') {
+        return ['ok' => false, 'account' => '', 'raw' => 'url 为空'];
+    }
+    $sep = strpos($cfg['url'], '?') === false ? '?' : '&';
     $attempts = [
         ['type' => 'body'],
         ['type' => 'header', 'name' => 'token'],
@@ -164,86 +180,111 @@ if ($orderNo !== null && $orderNo !== '' && (bool)($config['copy_enabled'] ?? fa
         ['type' => 'query',  'name' => 'token'],
     ];
     foreach ($attempts as $at) {
-        $target  = $copyUrl;
+        $target  = $cfg['url'];
         $headers = ['Accept: application/json'];
-        if ($copyMethod === 'POST') {
-            // POST：参数与 Token 放入 JSON body（接口规范），也保留 header / URL 参数备选
-            if ($at['type'] === 'body' && $copyToken !== '') {
-                $body = json_encode([$copyParam => $orderNo, 'token' => $copyToken], JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
+        $body    = '';
+        if ($cfg['method'] === 'POST') {
+            if ($at['type'] === 'body' && $cfg['token'] !== '') {
+                $body = json_encode([$cfg['param'] => $orderNo, 'token' => $cfg['token']], JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
                 $headers[] = 'Content-Type: application/json';
-            } elseif ($at['type'] === 'header' && $copyToken !== '') {
-                $headers[] = $at['name'] . ': ' . $copyToken;
-                $body = json_encode([$copyParam => $orderNo], JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
+            } elseif ($at['type'] === 'header' && $cfg['token'] !== '') {
+                $headers[] = $at['name'] . ': ' . $cfg['token'];
+                $body = json_encode([$cfg['param'] => $orderNo], JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
                 $headers[] = 'Content-Type: application/json';
             } else {
                 $headers[] = 'Content-Type: application/json';
-                $body = json_encode([$copyParam => $orderNo], JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
-                if ($at['type'] === 'query' && $copyToken !== '') {
-                    $target .= $sep . http_build_query([$at['name'] => $copyToken]);
+                $body = json_encode([$cfg['param'] => $orderNo], JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
+                if ($at['type'] === 'query' && $cfg['token'] !== '') {
+                    $target .= $sep . http_build_query([$at['name'] => $cfg['token']]);
                 }
             }
             $ch = curl_init($target);
             curl_setopt_array($ch, [
                 CURLOPT_RETURNTRANSFER => true,
-                CURLOPT_TIMEOUT        => 10,
-                CURLOPT_CONNECTTIMEOUT => 5,
+                CURLOPT_TIMEOUT        => $timeout,
+                CURLOPT_CONNECTTIMEOUT => 4,
                 CURLOPT_HTTPHEADER     => $headers,
                 CURLOPT_POST           => true,
                 CURLOPT_POSTFIELDS     => $body,
             ]);
         } else {
-            // GET：参数放入 URL
-            $target .= $sep . http_build_query([$copyParam => $orderNo]);
-            if ($at['type'] === 'header' && $copyToken !== '') {
-                $headers[] = $at['name'] . ': ' . $copyToken;
-            } elseif ($at['type'] === 'query' && $copyToken !== '') {
-                $target .= $sep . http_build_query([$at['name'] => $copyToken]);
+            $target .= $sep . http_build_query([$cfg['param'] => $orderNo]);
+            if ($at['type'] === 'header' && $cfg['token'] !== '') {
+                $headers[] = $at['name'] . ': ' . $cfg['token'];
+            } elseif ($at['type'] === 'query' && $cfg['token'] !== '') {
+                $target .= $sep . http_build_query([$at['name'] => $cfg['token']]);
             }
             $ch = curl_init($target);
             curl_setopt_array($ch, [
                 CURLOPT_RETURNTRANSFER => true,
-                CURLOPT_TIMEOUT        => 10,
-                CURLOPT_CONNECTTIMEOUT => 5,
+                CURLOPT_TIMEOUT        => $timeout,
+                CURLOPT_CONNECTTIMEOUT => 4,
                 CURLOPT_HTTPHEADER     => $headers,
             ]);
         }
-        $resp = curl_exec($ch);
+        $resp    = curl_exec($ch);
         $httpCode = (int)curl_getinfo($ch, CURLINFO_HTTP_CODE);
+        $curlErr = curl_error($ch);
         curl_close($ch);
         if ($resp === false || $httpCode >= 400) {
             continue;
         }
         $json = json_decode((string)$resp, true);
         if (is_array($json) && (int)($json['code'] ?? -1) === 0 && !empty($json['data']['recharge_account'])) {
-            $extraLine = '充值账号: ' . (string)$json['data']['recharge_account'];
-            break;
+            return ['ok' => true, 'account' => (string)$json['data']['recharge_account'], 'raw' => ''];
         }
     }
-    if ($extraLine !== '') {
-        $content .= "\n" . $extraLine;
-    }
+    return ['ok' => false, 'account' => '', 'raw' => '所有 Token 尝试均失败'];
 }
 
-// 5. 组装消息文本
+/**
+ * 通过机器人发送 C2C 消息（带重试）
+ */
+function sendBotMessage(Application $app, string $botId, string $openid, string $text): array
+{
+    $bot = $app->getBotManager()->getBot($botId);
+    if ($bot === null) {
+        return ['ok' => false, 'error' => 'bot not found: ' . $botId];
+    }
+    for ($attempt = 1; $attempt <= 3; $attempt++) {
+        try {
+            $bot->getClient()->sendC2CMessage($openid, ['content' => $text]);
+            return ['ok' => true, 'error' => ''];
+        } catch (\Throwable $e) {
+            $err = $e->getMessage();
+            if ($attempt < 3) {
+                usleep(500000);
+            }
+        }
+    }
+    return ['ok' => false, 'error' => $err ?? 'unknown'];
+}
+
+// 5. 组装第一条通知文本（不含充值账号）
 $time     = date('Y-m-d H:i:s');
 $ip       = (string)($_SERVER['HTTP_X_FORWARDED_FOR'] ?? $_SERVER['REMOTE_ADDR'] ?? '');
 $method   = (string)($_SERVER['REQUEST_METHOD'] ?? 'POST');
 
 if (strncmp($content, '来新订单了', 5) === 0) {
     // 订单模板排版：直接输出（不带【回调通知】标题、来源），末尾带时间
-    $text = $content . "\n时间: " . $time;
+    $firstText = $content . "\n时间: " . $time;
 } else {
     // 其他内容：使用后台配置模板
     $template = (string)($config['template'] ?? '{content}');
-    $text = str_replace(
+    $firstText = str_replace(
         ['{content}', '{source}', '{time}', '{ip}', '{method}'],
         [$content, $source, $time, $ip, $method],
         $template
     );
-    $text = str_replace('\\n', "\n", $text);
+    $firstText = str_replace('\\n', "\n", $firstText);
 }
 
-// 6. 记录日志（发送成功后写入最终状态）
+// 如果启用了自动拉取充值账号，第一条通知加「充值账号拉取中...」提示
+if ($copyEnabled) {
+    $firstText .= "\n充值账号: 拉取中...";
+}
+
+// 6. 记录日志目录
 $logDir = $dataDir . '/callbacks';
 if (!is_dir($logDir)) {
     @mkdir($logDir, 0777, true);
@@ -251,35 +292,32 @@ if (!is_dir($logDir)) {
 $logFile = $logDir . '/' . date('Ymd') . '.jsonl';
 $shortContent = (function_exists('mb_substr') ? mb_substr($content, 0, 500, 'UTF-8') : substr($content, 0, 500));
 
-// 7. 通过机器人发送 C2C 消息（带重试，避免瞬时故障丢单）
-$sendOk  = false;
-$lastErr = null;
-$maxAttempts = 3;
-
+// 7. 发送第一条通知
+$app = null;
 try {
     $app = new Application(__DIR__ . '/config/bots.php');
     $app->boot();
-
-    $bot = $app->getBotManager()->getBot($botId);
-    if ($bot === null) {
-        throw new RuntimeException('bot not found: ' . $botId);
-    }
-
-    for ($attempt = 1; $attempt <= $maxAttempts; $attempt++) {
-        try {
-            $bot->getClient()->sendC2CMessage($receiverOpenid, ['content' => $text]);
-            $sendOk = true;
-            break;
-        } catch (\Throwable $e) {
-            $lastErr = $e;
-            if ($attempt < $maxAttempts) {
-                usleep(500000); // 0.5s 后重试
-            }
-        }
-    }
 } catch (\Throwable $e) {
-    $lastErr = $e;
+    // Application 初始化失败，落盘到失败队列
+    @file_put_contents(
+        $logFile,
+        json_encode(['time' => $time, 'ip' => $ip, 'source' => $source, 'method' => $method, 'content' => $shortContent, 'status' => 'failed', 'error' => $e->getMessage()], JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES) . "\n",
+        FILE_APPEND | LOCK_EX
+    );
+    @mkdir($dataDir . '/callbacks/failed', 0777, true);
+    @file_put_contents(
+        $dataDir . '/callbacks/failed/' . date('Ymd') . '.jsonl',
+        json_encode(['time' => $time, 'text' => $firstText, 'bot_id' => $botId, 'receiver' => $receiverOpenid, 'error' => $e->getMessage()], JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES) . "\n",
+        FILE_APPEND | LOCK_EX
+    );
+    http_response_code(502);
+    echo json_encode(['code' => 502, 'message' => 'app init failed', 'error' => $e->getMessage()]);
+    exit;
 }
+
+$sendResult = sendBotMessage($app, $botId, $receiverOpenid, $firstText);
+$sendOk  = $sendResult['ok'];
+$lastErr = $sendResult['error'];
 
 $logLineBase = [
     'time'    => $time,
@@ -289,44 +327,73 @@ $logLineBase = [
     'content' => $shortContent,
 ];
 
+// 8. 第一条通知发送成功 → 立刻返回 OK 给第三方，后续拉账号+补发在后台异步进行
 if ($sendOk) {
-    $logLine = json_encode(
-        array_merge($logLineBase, ['status' => 'sent']),
-        JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES
+    @file_put_contents(
+        $logFile,
+        json_encode(array_merge($logLineBase, ['status' => 'sent']), JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES) . "\n",
+        FILE_APPEND | LOCK_EX
     );
-    @file_put_contents($logFile, $logLine . "\n", FILE_APPEND | LOCK_EX);
-
-    // 第三方推送平台要求响应包含 OK/ok/SUCCESS/success，统一返回纯文本 OK
     http_response_code(200);
     header('Content-Type: text/plain; charset=utf-8');
     echo 'OK';
+    // 关键：提前关闭 HTTP 连接，后续操作在后台继续
+    if (function_exists('fastcgi_finish_request')) {
+        fastcgi_finish_request();
+    }
+} else {
+    // 第一条通知发送失败 → 落盘到失败队列
+    @file_put_contents(
+        $logFile,
+        json_encode(array_merge($logLineBase, ['status' => 'failed', 'error' => $lastErr]), JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES) . "\n",
+        FILE_APPEND | LOCK_EX
+    );
+    @mkdir($dataDir . '/callbacks/failed', 0777, true);
+    @file_put_contents(
+        $dataDir . '/callbacks/failed/' . date('Ymd') . '.jsonl',
+        json_encode(array_merge($logLineBase, ['text' => $firstText, 'bot_id' => $botId, 'receiver' => $receiverOpenid, 'error' => $lastErr]), JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES) . "\n",
+        FILE_APPEND | LOCK_EX
+    );
+    http_response_code(502);
+    echo json_encode(['code' => 502, 'message' => 'send failed', 'error' => $lastErr]);
     exit;
 }
 
-// 发送失败：记录日志，并落盘到失败队列，便于后续人工/定时重发，避免丢单
-$logLine = json_encode(
-    array_merge($logLineBase, ['status' => 'failed', 'error' => $lastErr ? $lastErr->getMessage() : 'unknown']),
-    JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES
-);
-@file_put_contents($logFile, $logLine . "\n", FILE_APPEND | LOCK_EX);
-
-$failDir = $dataDir . '/callbacks/failed';
-if (!is_dir($failDir)) {
-    @mkdir($failDir, 0777, true);
+// 9. 后台异步：拉取充值账号，成功则补发第二条消息
+if ($copyEnabled) {
+    $fetchResult = fetchRechargeAccount($orderNo, $copyConfig, $copyTimeout);
+    if ($fetchResult['ok']) {
+        $secondText = "充值账号: " . $fetchResult['account'] . "\n单号: " . $orderNo;
+        $r2 = sendBotMessage($app, $botId, $receiverOpenid, $secondText);
+        // 记录补发结果
+        @file_put_contents(
+            $logFile,
+            json_encode([
+                'time' => date('Y-m-d H:i:s'),
+                'source' => 'account_fetch',
+                'content' => '充值账号: ' . $fetchResult['account'] . ' (单号 ' . $orderNo . ')',
+                'status' => $r2['ok'] ? 'sent' : 'failed',
+                'error' => $r2['ok'] ? '' : $r2['error'],
+            ], JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES) . "\n",
+            FILE_APPEND | LOCK_EX
+        );
+    } else {
+        // 拉取失败：发一条告警，让你知道这个单子需要手动处理
+        $alertText = "⚠️ 充值账号拉取失败\n单号: " . $orderNo . "\n请尽快手动处理或退款";
+        sendBotMessage($app, $botId, $receiverOpenid, $alertText);
+        @file_put_contents(
+            $logFile,
+            json_encode([
+                'time' => date('Y-m-d H:i:s'),
+                'source' => 'account_fetch',
+                'content' => '拉取失败: ' . $fetchResult['raw'] . ' (单号 ' . $orderNo . ')',
+                'status' => 'fetch_failed',
+            ], JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES) . "\n",
+            FILE_APPEND | LOCK_EX
+        );
+    }
 }
-@file_put_contents(
-    $failDir . '/' . date('Ymd') . '.jsonl',
-    json_encode(
-        array_merge($logLineBase, [
-            'text'     => $text,
-            'bot_id'   => $botId,
-            'receiver' => $receiverOpenid,
-            'error'    => $lastErr ? $lastErr->getMessage() : 'unknown',
-        ]),
-        JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES
-    ) . "\n",
-    FILE_APPEND | LOCK_EX
-);
 
-http_response_code(502);
-echo json_encode(['code' => 502, 'message' => 'send failed', 'error' => $lastErr ? $lastErr->getMessage() : 'unknown']);
+// （旧的成功/失败处理已由上面的新流程替代，此处保留结束标记）
+// 文件结束
+
