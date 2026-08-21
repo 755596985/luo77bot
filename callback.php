@@ -279,9 +279,9 @@ if (strncmp($content, '来新订单了', 5) === 0) {
     $firstText = str_replace('\\n', "\n", $firstText);
 }
 
-// 如果启用了自动拉取充值账号，第一条通知加「充值账号拉取中...」提示
+// 如果启用了自动拉取充值账号，第一条通知提醒倒计时已开始
 if ($copyEnabled) {
-    $firstText .= "\n充值账号: 拉取中...";
+    $firstText .= "\n⏰ 10分钟倒计时已开始，充值账号马上发来...";
 }
 
 // 6. 记录日志目录
@@ -362,8 +362,12 @@ if ($sendOk) {
 // 9. 后台异步：拉取充值账号，成功则补发第二条消息
 if ($copyEnabled) {
     $fetchResult = fetchRechargeAccount($orderNo, $copyConfig, $copyTimeout);
+    // 拉取完成的时刻 ≈ 10 分钟倒计时起点，截止时间 = 现在 + 10 分钟
+    $deadline = date('H:i', time() + 600);
     if ($fetchResult['ok']) {
-        $secondText = "充值账号: " . $fetchResult['account'] . "\n单号: " . $orderNo;
+        $secondText = "充值账号: " . $fetchResult['account']
+            . "\n单号: " . $orderNo
+            . "\n⏰ 截止时间: " . $deadline . "（10分钟内必须充值完成）";
         $r2 = sendBotMessage($app, $botId, $receiverOpenid, $secondText);
         // 记录补发结果
         @file_put_contents(
