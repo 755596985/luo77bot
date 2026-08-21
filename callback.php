@@ -94,13 +94,13 @@ if ($rawBody !== '') {
             $price    = $pick(['price', 'amount', 'money', 'total_amount', 'pay_price', 'cost']);
 
             $parts = [];
-            if ($orderNo !== null)   { $parts[] = '单号: ' . $orderNo; }
-            if ($goodsName !== null) { $parts[] = '商品: ' . $goodsName; }
-            if ($goodsId !== null)   { $parts[] = '商品ID: ' . $goodsId; }
-            if ($price !== null)     { $parts[] = '价格: ' . $price; }
+            if ($orderNo !== null)   { $parts[] = '📋 单号: ' . $orderNo; }
+            if ($goodsName !== null) { $parts[] = '🛒 商品: ' . $goodsName; }
+            if ($goodsId !== null)   { $parts[] = '🏷️ 商品ID: ' . $goodsId; }
+            if ($price !== null)     { $parts[] = '💰 价格: ' . $price; }
 
             if ($parts !== []) {
-                $content = "来新订单了\n" . implode("\n", $parts);
+                $content = "📢 来新订单了\n" . implode("\n", $parts);
             } else {
                 // 未匹配到订单字段时，兜底逐行输出原始 JSON 字段（中文不转义）
                 $fieldNames = [
@@ -268,7 +268,7 @@ if ($copyEnabled) {
     if ($fetchResult['ok']) {
         // 拉到账号的时刻 = 10 分钟倒计时起点
         $deadline = date('H:i', time() + 600);
-        $extraLines = "\n充值账号: " . $fetchResult['account']
+        $extraLines = "\n📱 充值账号: " . $fetchResult['account']
             . "\n⏰ 截止时间: " . $deadline . "（10分钟内必须充值完成）";
         $fetchStatus = 'ok';
     } else {
@@ -282,9 +282,9 @@ $time     = date('Y-m-d H:i:s');
 $ip       = (string)($_SERVER['HTTP_X_FORWARDED_FOR'] ?? $_SERVER['REMOTE_ADDR'] ?? '');
 $method   = (string)($_SERVER['REQUEST_METHOD'] ?? 'POST');
 
-if (strncmp($content, '来新订单了', 5) === 0) {
+if (strpos($content, '来新订单了') !== false) {
     // 订单模板排版：直接输出 + 充值账号 + 截止时间，末尾带时间
-    $text = $content . $extraLines . "\n时间: " . $time;
+    $text = $content . $extraLines . "\n🕐 时间: " . $time;
 } else {
     // 其他内容：使用后台配置模板
     $template = (string)($config['template'] ?? '{content}');
