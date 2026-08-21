@@ -239,6 +239,15 @@ class AiClient
     }
 
     /**
+     * 供应商限流冷却记录文件（跨请求生效；PHP 每请求独立进程，
+     * static 变量无法在请求间保持，必须落盘）
+     */
+    private static function cooldownFile(): string
+    {
+        return __DIR__ . '/../../data/ai_cooldown.json';
+    }
+
+    /**
      * 核心：带故障转移 / 加权轮询的 AI 对话调用。
      *
      * @param array $messages OpenAI 格式消息数组（已包含 system/user 等）
@@ -249,8 +258,12 @@ class AiClient
     {
         $cfg = self::loadConfig();
 
-        static $cooldown = []; // provider 索引 => 冷却到期时间戳（限速保护）
         $now = \time();
+        $cooldownFile = self::cooldownFile();
+        $cooldown = [];
+        if (\is_file($cooldownFile)) {
+            $cooldown = \json_decode((string)@\file_get_contents($cooldownFile), true) ?: [];
+        }
 
         $candidates = [];
         foreach ($cfg['providers'] as $i => $p) {
@@ -273,7 +286,9 @@ class AiClient
 
         $order = self::order($candidates, $strategy);
         foreach ($order as $i) {
-            if (isset($cooldown[$i]) && $cooldown[$i] > $now) {
+            // 冷却 key 用 base_url+model（配置增删后索引会漂移，不能直接用索引）
+            $key = \md5($candidates[$i]['base_url'] . '|' . $candidates[$i]['model']);
+            if (($cooldown[$key] ?? 0) > $now) {
                 continue; // 仍在冷却（之前被限速）
             }
             $res = self::requestSingle($candidates[$i], $messages, $maxTokens, $temperature, is_callable($transport) ? $transport : null);
@@ -281,7 +296,14 @@ class AiClient
                 return $res['content'];
             }
             if ($res['rate_limited']) {
-                $cooldown[$i] = $now + 30; // 限速冷却 30 秒，期间不再优先尝试
+                $cooldown[$key] = $now + 30; // 限速冷却 30 秒，期间不再优先尝试
+                // 顺带清理已过期的旧条目，避免文件无限膨胀
+                foreach ($cooldown as $k => $v) {
+                    if ((int)$v <= $now) {
+                        unset($cooldown[$k]);
+                    }
+                }
+                @\file_put_contents($cooldownFile, \json_encode($cooldown), LOCK_EX);
             }
         }
 

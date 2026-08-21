@@ -202,10 +202,27 @@ class SuperPlugin implements PluginInterface
         $this->currentUserId = $userId;
         $cmd = mb_strtolower($content);
 
-        // 签到提醒自动检测
+        // 签到提醒自动检测（回复失败不阻断后续命令处理）
         $signRemind = $this->checkSignReminder($userId, false);
         if ($signRemind !== null) {
-            $event->replyMarkdown($signRemind);
+            try {
+                $event->replyMarkdown($signRemind);
+            } catch (\Throwable $e) {
+                $this->logger->error('签到提醒发送失败', ['error' => $e->getMessage()]);
+            }
+        }
+
+        // 到期提醒触发（无 cron，借助用户下次发言被动推送；同样隔离异常）
+        $dueReminders = $this->checkExpiredReminders($userId);
+        foreach ($dueReminders as $r) {
+            try {
+                $event->replyMarkdown(
+                    "> ━━━━━━━━━━\n> ⏰ 到期提醒\n> ━━━━━━━━━━\n> " . ($r['content'] ?? '') .
+                    "\n> ━━━━━━━━━━"
+                );
+            } catch (\Throwable $e) {
+                $this->logger->error('到期提醒发送失败', ['error' => $e->getMessage()]);
+            }
         }
 
         // 签到模块
@@ -267,10 +284,27 @@ class SuperPlugin implements PluginInterface
         $this->currentUserId = $userId;
         $cmd = mb_strtolower($content);
 
-        // 签到提醒自动检测
+        // 签到提醒自动检测（回复失败不阻断后续命令处理）
         $signRemind = $this->checkSignReminder($userId, true);
         if ($signRemind !== null) {
-            $event->replyMarkdown($signRemind);
+            try {
+                $event->replyMarkdown($signRemind);
+            } catch (\Throwable $e) {
+                $this->logger->error('签到提醒发送失败', ['error' => $e->getMessage()]);
+            }
+        }
+
+        // 到期提醒触发（无 cron，借助用户下次发言被动推送；同样隔离异常）
+        $dueReminders = $this->checkExpiredReminders($userId);
+        foreach ($dueReminders as $r) {
+            try {
+                $event->replyMarkdown(
+                    "> ━━━━━━━━━━\n> ⏰ 到期提醒\n> ━━━━━━━━━━\n> " . ($r['content'] ?? '') .
+                    "\n> ━━━━━━━━━━"
+                );
+            } catch (\Throwable $e) {
+                $this->logger->error('到期提醒发送失败', ['error' => $e->getMessage()]);
+            }
         }
 
         // 签到模块
@@ -1288,6 +1322,37 @@ CAL;
             $this->dataDir . 'reminders_' . md5($userId) . '.json',
             json_encode($reminders, JSON_UNESCAPED_UNICODE | JSON_PRETTY_PRINT)
         );
+    }
+
+    /**
+     * 检查并取出该用户已到期的提醒（取出后从存储中移除，避免重复推送）。
+     * PHP 无常驻进程也没有 cron，提醒只能在用户下次发消息时被动触发。
+     */
+    private function checkExpiredReminders(string $userId): array
+    {
+        $file = $this->dataDir . 'reminders_' . md5($userId) . '.json';
+        if (!is_file($file)) {
+            return [];
+        }
+        $reminders = @json_decode((string)file_get_contents($file), true);
+        if (!is_array($reminders) || $reminders === []) {
+            return [];
+        }
+
+        $now  = time();
+        $due  = [];
+        $keep = [];
+        foreach ($reminders as $r) {
+            if ((int)($r['time'] ?? 0) <= $now) {
+                $due[] = $r;
+            } else {
+                $keep[] = $r;
+            }
+        }
+        if ($due !== []) {
+            $this->saveReminders($userId, $keep);
+        }
+        return $due;
     }
 
     // ==================== 人设系统 ====================

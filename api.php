@@ -34,7 +34,8 @@ if (str_starts_with($apiToken, 'Bearer ')) {
 $tokenValid = ($apiToken !== '' && $apiToken === $configToken && $configToken !== '__QQBOT_DISABLED_TOKEN__');
 
 // 综合鉴权：Session 登录 或 有效 Token
-if (!$sessionLoggedIn && !$tokenValid && $action !== 'status') {
+// （status 原先免鉴权，会向未登录访客泄露 PHP 版本/机器人与插件数量，已收紧）
+if (!$sessionLoggedIn && !$tokenValid) {
     http_response_code(401);
     echo json_encode(['success' => false, 'message' => 'Unauthorized: 请先登录或提供有效的 API Token']);
     exit;
