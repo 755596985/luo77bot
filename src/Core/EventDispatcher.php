@@ -59,10 +59,12 @@ class EventDispatcher
                 } else {
                     error_log('[EventDispatcher] ' . $msg . ' @ ' . $e->getFile() . ':' . $e->getLine());
                 }
-                continue;
+                // 注意：不走 continue，统一走下方的传播检查。
+                // 插件抛异常前若已标记停止传播（如回复被平台 msg_seq 去重拒绝），
+                // 也应中断分发，避免后续插件再次回复造成用户收到多条消息
             }
 
-            // 如果事件设置了停止传播，则中断
+            // 如果事件设置了停止传播，则中断（无论插件正常返回还是抛出异常）
             if (method_exists($event, 'isPropagationStopped') && $event->isPropagationStopped()) {
                 break;
             }

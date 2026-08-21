@@ -179,6 +179,22 @@ class SuperPlugin implements PluginInterface
 
     private function handleMessage(C2CMessageEvent $event): void
     {
+        try {
+            $this->doHandleMessage($event);
+        } catch (\Throwable $e) {
+            // 回复失败（如被平台 msg_seq 去重拒绝 40054005）不再向上冒泡，
+            // 记录日志即可，避免 EventDispatcher 因异常继续分发事件
+            $this->logger->error('SuperPlugin C2C 处理异常', ['error' => $e->getMessage()]);
+        }
+
+        // SuperPlugin 对 C2C 消息有 AI 兜底（route 最终走 aiChat），
+        // 无论本次处理成败都终止传播，防止后续插件（如 ExamplePlugin 的
+        // 默认回复）再次回复，导致用户收到多条消息
+        $event->stopPropagation();
+    }
+
+    private function doHandleMessage(C2CMessageEvent $event): void
+    {
         $content = trim($event->getContent());
         if ($content === '') return;
 
@@ -231,6 +247,18 @@ class SuperPlugin implements PluginInterface
     }
 
     private function handleGroupMessage(GroupAtMessageEvent $event): void
+    {
+        try {
+            $this->doHandleGroupMessage($event);
+        } catch (\Throwable $e) {
+            $this->logger->error('SuperPlugin 群消息处理异常', ['error' => $e->getMessage()]);
+        }
+
+        // 同 C2C：AI 兜底接管所有群 @ 消息，处理成败都终止传播防重复回复
+        $event->stopPropagation();
+    }
+
+    private function doHandleGroupMessage(GroupAtMessageEvent $event): void
     {
         $content = trim($event->getContent());
         if ($content === '') return;

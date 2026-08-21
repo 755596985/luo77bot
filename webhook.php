@@ -52,9 +52,16 @@ $logger->debug('Webhook request received', [
 ]);
 
 // 4. 交给对应机器人的 Handler 处理
-$response = $bot->getHandler()->handle($headers, $body);
+$handler = $bot->getHandler();
+$response = $handler->handle($headers, $body);
 
 // 5. 返回响应
-http_response_code(200);
-header('Content-Type: application/json');
-echo json_encode($response);
+// Handler 可能已通过 fastcgi_finish_request 提前发送过响应（事件推送场景），
+// 此时不再重复输出；内部设置过错误码（如验签失败 401）时也不要覆盖为 200
+if (!$handler->isResponseSent()) {
+    if (!isset($response['code']) || (int)$response['code'] < 400) {
+        http_response_code(200);
+    }
+    header('Content-Type: application/json');
+    echo json_encode($response);
+}

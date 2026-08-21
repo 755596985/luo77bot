@@ -26,6 +26,9 @@ class Handler
     /** @var array<string, int> 记录每个 msg_id 的 msg_seq，用于去重 */
     private array $msgSeqMap = [];
 
+    /** 是否已通过 fastcgi_finish_request 向平台发送过响应 */
+    private bool $responseSent = false;
+
     public function __construct(
         Logger $logger,
         EventDispatcher $dispatcher,
@@ -96,6 +99,14 @@ class Handler
     }
 
     /**
+     * 是否已向平台发送过响应（fastcgi_finish_request 已提前返回）
+     */
+    public function isResponseSent(): bool
+    {
+        return $this->responseSent;
+    }
+
+    /**
      * 获取下一个 msg_seq，用于被动消息去重
      */
     private function getNextMsgSeq(string $msgId): int
@@ -115,7 +126,50 @@ class Handler
      */
     private function handleDispatch(string $eventType, array $data): array
     {
-        $msgId = $data['id'] ?? '';
+        $msgId = (string)($data['id'] ?? '');
+
+        // ---------- 事件级持久化去重 ----------
+        // QQ 平台在 webhook 响应超时（AI 推理耗时较长）时会重推同一事件，
+        // PHP 每个请求都是独立进程，必须落盘去重，否则同一条消息会被
+        // 重复处理、重复回复（用户会收到多条相同消息）
+        if ($msgId !== '') {
+            $dedupDir = __DIR__ . '/../../data/dedup';
+            if (!is_dir($dedupDir)) {
+                @mkdir($dedupDir, 0755, true);
+            }
+            $marker = $dedupDir . '/' . md5($msgId) . '.marker';
+
+            // 'x' 模式独占创建：并发的重推请求中只有一个能创建成功
+            $fh = @fopen($marker, 'x');
+            if ($fh === false) {
+                $this->logger->info('Duplicate event skipped', ['id' => $msgId]);
+                return $this->ack();
+            }
+            @fwrite($fh, date('c'));
+            fclose($fh);
+
+            // 顺带清理 1 小时前的旧标记（每小时最多触发一次）
+            $gcFlag = $dedupDir . '/.last_gc';
+            if (!is_file($gcFlag) || (time() - (int)@filemtime($gcFlag)) > 3600) {
+                @touch($gcFlag);
+                foreach ((glob($dedupDir . '/*.marker') ?: []) as $old) {
+                    if ((time() - (int)@filemtime($old)) > 3600) {
+                        @unlink($old);
+                    }
+                }
+            }
+        }
+
+        // ---------- 先向平台返回 ACK，再执行耗时的插件处理 ----------
+        // AI 推理可能超过平台 webhook 超时时间，先返回 200 可避免平台重推
+        $this->responseSent = true;
+        http_response_code(200);
+        header('Content-Type: application/json');
+        echo '{}';
+        if (function_exists('fastcgi_finish_request')) {
+            fastcgi_finish_request();
+        }
+
         $nextSeq = $this->getNextMsgSeq($msgId);
 
         switch ($eventType) {
