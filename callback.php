@@ -260,31 +260,43 @@ function sendBotMessage(Application $app, string $botId, string $openid, string 
     return ['ok' => false, 'error' => $err ?? 'unknown'];
 }
 
-// 5. 组装第一条通知文本（不含充值账号）
+// 5. 先拉取充值账号（供货商给的拉取时间足够，拉到后 10 分钟倒计时才开始）
+$extraLines = '';
+$fetchStatus = 'skipped'; // skipped / ok / failed
+if ($copyEnabled) {
+    $fetchResult = fetchRechargeAccount($orderNo, $copyConfig, $copyTimeout);
+    if ($fetchResult['ok']) {
+        // 拉到账号的时刻 = 10 分钟倒计时起点
+        $deadline = date('H:i', time() + 600);
+        $extraLines = "\n充值账号: " . $fetchResult['account']
+            . "\n⏰ 截止时间: " . $deadline . "（10分钟内必须充值完成）";
+        $fetchStatus = 'ok';
+    } else {
+        $extraLines = "\n⚠️ 充值账号拉取失败，请尽快手动处理或退款";
+        $fetchStatus = 'failed';
+    }
+}
+
+// 6. 组装完整消息文本（订单信息 + 充值账号 + 截止时间，一条搞定）
 $time     = date('Y-m-d H:i:s');
 $ip       = (string)($_SERVER['HTTP_X_FORWARDED_FOR'] ?? $_SERVER['REMOTE_ADDR'] ?? '');
 $method   = (string)($_SERVER['REQUEST_METHOD'] ?? 'POST');
 
 if (strncmp($content, '来新订单了', 5) === 0) {
-    // 订单模板排版：直接输出（不带【回调通知】标题、来源），末尾带时间
-    $firstText = $content . "\n时间: " . $time;
+    // 订单模板排版：直接输出 + 充值账号 + 截止时间，末尾带时间
+    $text = $content . $extraLines . "\n时间: " . $time;
 } else {
     // 其他内容：使用后台配置模板
     $template = (string)($config['template'] ?? '{content}');
-    $firstText = str_replace(
+    $text = str_replace(
         ['{content}', '{source}', '{time}', '{ip}', '{method}'],
-        [$content, $source, $time, $ip, $method],
+        [$content . $extraLines, $source, $time, $ip, $method],
         $template
     );
-    $firstText = str_replace('\\n', "\n", $firstText);
+    $text = str_replace('\\n', "\n", $text);
 }
 
-// 如果启用了自动拉取充值账号，第一条通知提醒倒计时已开始
-if ($copyEnabled) {
-    $firstText .= "\n⏰ 10分钟倒计时已开始，充值账号马上发来...";
-}
-
-// 6. 记录日志目录
+// 7. 记录日志目录
 $logDir = $dataDir . '/callbacks';
 if (!is_dir($logDir)) {
     @mkdir($logDir, 0777, true);
@@ -292,13 +304,12 @@ if (!is_dir($logDir)) {
 $logFile = $logDir . '/' . date('Ymd') . '.jsonl';
 $shortContent = (function_exists('mb_substr') ? mb_substr($content, 0, 500, 'UTF-8') : substr($content, 0, 500));
 
-// 7. 发送第一条通知
+// 8. 发送消息（带重试）
 $app = null;
 try {
     $app = new Application(__DIR__ . '/config/bots.php');
     $app->boot();
 } catch (\Throwable $e) {
-    // Application 初始化失败，落盘到失败队列
     @file_put_contents(
         $logFile,
         json_encode(['time' => $time, 'ip' => $ip, 'source' => $source, 'method' => $method, 'content' => $shortContent, 'status' => 'failed', 'error' => $e->getMessage()], JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES) . "\n",
@@ -307,7 +318,7 @@ try {
     @mkdir($dataDir . '/callbacks/failed', 0777, true);
     @file_put_contents(
         $dataDir . '/callbacks/failed/' . date('Ymd') . '.jsonl',
-        json_encode(['time' => $time, 'text' => $firstText, 'bot_id' => $botId, 'receiver' => $receiverOpenid, 'error' => $e->getMessage()], JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES) . "\n",
+        json_encode(['time' => $time, 'text' => $text, 'bot_id' => $botId, 'receiver' => $receiverOpenid, 'error' => $e->getMessage()], JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES) . "\n",
         FILE_APPEND | LOCK_EX
     );
     http_response_code(502);
@@ -315,7 +326,7 @@ try {
     exit;
 }
 
-$sendResult = sendBotMessage($app, $botId, $receiverOpenid, $firstText);
+$sendResult = sendBotMessage($app, $botId, $receiverOpenid, $text);
 $sendOk  = $sendResult['ok'];
 $lastErr = $sendResult['error'];
 
@@ -325,9 +336,10 @@ $logLineBase = [
     'source'  => $source,
     'method'  => $method,
     'content' => $shortContent,
+    'fetch'   => $fetchStatus,
 ];
 
-// 8. 第一条通知发送成功 → 立刻返回 OK 给第三方，后续拉账号+补发在后台异步进行
+// 9. 发送成功 → 返回 OK
 if ($sendOk) {
     @file_put_contents(
         $logFile,
@@ -337,67 +349,25 @@ if ($sendOk) {
     http_response_code(200);
     header('Content-Type: text/plain; charset=utf-8');
     echo 'OK';
-    // 关键：提前关闭 HTTP 连接，后续操作在后台继续
+    // 提前关闭 HTTP 连接（拉取已完成，后续无耗时操作，但保持习惯）
     if (function_exists('fastcgi_finish_request')) {
         fastcgi_finish_request();
     }
-} else {
-    // 第一条通知发送失败 → 落盘到失败队列
-    @file_put_contents(
-        $logFile,
-        json_encode(array_merge($logLineBase, ['status' => 'failed', 'error' => $lastErr]), JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES) . "\n",
-        FILE_APPEND | LOCK_EX
-    );
-    @mkdir($dataDir . '/callbacks/failed', 0777, true);
-    @file_put_contents(
-        $dataDir . '/callbacks/failed/' . date('Ymd') . '.jsonl',
-        json_encode(array_merge($logLineBase, ['text' => $firstText, 'bot_id' => $botId, 'receiver' => $receiverOpenid, 'error' => $lastErr]), JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES) . "\n",
-        FILE_APPEND | LOCK_EX
-    );
-    http_response_code(502);
-    echo json_encode(['code' => 502, 'message' => 'send failed', 'error' => $lastErr]);
     exit;
 }
 
-// 9. 后台异步：拉取充值账号，成功则补发第二条消息
-if ($copyEnabled) {
-    $fetchResult = fetchRechargeAccount($orderNo, $copyConfig, $copyTimeout);
-    // 拉取完成的时刻 ≈ 10 分钟倒计时起点，截止时间 = 现在 + 10 分钟
-    $deadline = date('H:i', time() + 600);
-    if ($fetchResult['ok']) {
-        $secondText = "充值账号: " . $fetchResult['account']
-            . "\n单号: " . $orderNo
-            . "\n⏰ 截止时间: " . $deadline . "（10分钟内必须充值完成）";
-        $r2 = sendBotMessage($app, $botId, $receiverOpenid, $secondText);
-        // 记录补发结果
-        @file_put_contents(
-            $logFile,
-            json_encode([
-                'time' => date('Y-m-d H:i:s'),
-                'source' => 'account_fetch',
-                'content' => '充值账号: ' . $fetchResult['account'] . ' (单号 ' . $orderNo . ')',
-                'status' => $r2['ok'] ? 'sent' : 'failed',
-                'error' => $r2['ok'] ? '' : $r2['error'],
-            ], JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES) . "\n",
-            FILE_APPEND | LOCK_EX
-        );
-    } else {
-        // 拉取失败：发一条告警，让你知道这个单子需要手动处理
-        $alertText = "⚠️ 充值账号拉取失败\n单号: " . $orderNo . "\n请尽快手动处理或退款";
-        sendBotMessage($app, $botId, $receiverOpenid, $alertText);
-        @file_put_contents(
-            $logFile,
-            json_encode([
-                'time' => date('Y-m-d H:i:s'),
-                'source' => 'account_fetch',
-                'content' => '拉取失败: ' . $fetchResult['raw'] . ' (单号 ' . $orderNo . ')',
-                'status' => 'fetch_failed',
-            ], JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES) . "\n",
-            FILE_APPEND | LOCK_EX
-        );
-    }
-}
-
-// （旧的成功/失败处理已由上面的新流程替代，此处保留结束标记）
-// 文件结束
+// 10. 发送失败 → 落盘失败队列
+@file_put_contents(
+    $logFile,
+    json_encode(array_merge($logLineBase, ['status' => 'failed', 'error' => $lastErr]), JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES) . "\n",
+    FILE_APPEND | LOCK_EX
+);
+@mkdir($dataDir . '/callbacks/failed', 0777, true);
+@file_put_contents(
+    $dataDir . '/callbacks/failed/' . date('Ymd') . '.jsonl',
+    json_encode(array_merge($logLineBase, ['text' => $text, 'bot_id' => $botId, 'receiver' => $receiverOpenid, 'error' => $lastErr]), JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES) . "\n",
+    FILE_APPEND | LOCK_EX
+);
+http_response_code(502);
+echo json_encode(['code' => 502, 'message' => 'send failed', 'error' => $lastErr]);
 
